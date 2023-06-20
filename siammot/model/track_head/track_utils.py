@@ -261,7 +261,7 @@ def build_track_utils(cfg):
 
     search_expansion = cfg.MODEL.TRACK_HEAD.SEARCH_REGION - 1.
     pad_pixels = cfg.MODEL.TRACK_HEAD.PAD_PIXELS
-    min_search_wh = cfg.MODEL.TRACK_HEAD.MINIMUM_SREACH_REGION
+    min_search_wh = cfg.MODEL.TRACK_HEAD.MINIMUM_SEARCH_REGION
 
     track_utils = TrackUtils(search_expansion=search_expansion,
                              min_search_wh=min_search_wh,

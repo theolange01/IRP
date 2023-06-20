@@ -94,8 +94,6 @@ def boxlist_iou(boxlist1, boxlist2):
     iou = inter / (area1[:, None] + area2 - inter)
     return iou
 
-
-# TODO redundant, remove
 def _cat(tensors, dim=0):
     """
     Efficient version of torch.cat that avoids a copy if there is only a single element in a list

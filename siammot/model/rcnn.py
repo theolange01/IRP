@@ -3,7 +3,6 @@ Implements the Generalized R-CNN for SiamMOT
 """
 from typing import List, Tuple
 
-from siammot.structures.bounding_box import BoxList
 
 import torch
 from torch import nn
@@ -13,6 +12,8 @@ from siammot.model.rpn.rpn import build_rpn
 
 from siammot.model.roi_heads import build_roi_heads
 from siammot.model.backbone.backbone import build_backbone
+
+from siammot.utils import LOGGER
 
 
 class SiamMOT(nn.Module):
@@ -81,7 +82,6 @@ class SiamMOT(nn.Module):
                                                 proposals,
                                                 targets,
                                                 images.image_sizes,
-                                                original_image_sizes,
                                                 self.track_memory,
                                                 given_detection)
         
@@ -99,7 +99,7 @@ class SiamMOT(nn.Module):
 
         result = self.transform.postprocess(detections, images.image_sizes, original_image_sizes)
 
-        if self.training:
+        if self.training or targets: # Get loss even during validation
             losses = {}
             losses.update(roi_losses)
             losses.update(proposal_losses)
@@ -108,6 +108,16 @@ class SiamMOT(nn.Module):
         return result
 
 
-def build_siammot(cfg):
+def build_siammot(cfg, device):
     siammot = SiamMOT(cfg)
+
+    if cfg.MODEL.WEIGHT:
+        try:
+            siammot.load_state_dict(torch.load(cfg.MODEL.WEIGHT), map_location=device)
+        except:
+            
+            cfg.MODEL.WEIGHT = ""
+            LOGGER.warning("WARNING ⚠️ The model's architecture and the weights are not compatible\n Using new model instead")
+
+
     return siammot

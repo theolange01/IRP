@@ -7,7 +7,7 @@ from siammot.structures.bounding_box import BoxList
 from siammot.structures.boxlist_ops import cat_boxlist, boxlist_iou
 from siammot.model.matcher import Matcher
 
-from siammot.utils import registry
+from siammot.model.utils import registry
 
 
 class EMMTargetSampler(object):

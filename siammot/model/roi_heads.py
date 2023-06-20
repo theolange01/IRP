@@ -20,7 +20,7 @@ class CombinedROIHeads(nn.ModuleDict):
         super(CombinedROIHeads, self).__init__(heads)
         self.cfg = cfg.clone()
 
-    def forward(self, features, proposals, image_shapes, original_image_shapes, targets=None, track_memory=None, given_detection=None):
+    def forward(self, features, proposals, image_shapes, targets=None, track_memory=None, given_detection=None):
         losses = {}
 
         # Given detections are detections obtained with another detection model, I could use YOLO for detection are then track with SiamMOT

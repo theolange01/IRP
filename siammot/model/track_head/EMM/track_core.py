@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from siammot.structures.bounding_box import BoxList
 from siammot.utils.cat import cat
 
-from siammot.utils import registry
+from siammot.model.utils import registry
 from .xcorr import xcorr_depthwise
 from .feature_extractor import EMMFeatureExtractor, EMMPredictor
 from .track_loss import EMMLossComputation
