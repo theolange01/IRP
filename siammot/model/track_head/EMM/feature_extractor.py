@@ -44,10 +44,10 @@ class EMMPredictor(nn.Module):
     def __init__(self, cfg):
         super(EMMPredictor, self).__init__()
 
-        if cfg.MODEL.BACKBONE.CONV_BODY.startswith("DLA"):
-            in_channels = cfg.MODEL.DLA.BACKBONE_OUT_CHANNELS
-        elif cfg.MODEL.BACKBONE.CONV_BODY.startswith("R-"):
-            in_channels = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
+        if cfg.MODEL.BACKBONE.CONV_BODY.upper().startswith("DLA"):
+            in_channels = cfg.MODEL.BACKBONE.OUT_CHANNEL
+        elif cfg.MODEL.BACKBONE.CONV_BODY.upper().startswith("R"):
+            in_channels = cfg.MODEL.BACKBONE.OUT_CHANNEL
         else:
             in_channels = 128
 

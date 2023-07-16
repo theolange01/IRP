@@ -1,6 +1,9 @@
 import os
 import random
 from glob import glob
+import itertools
+from collections import defaultdict
+from typing import List, Tuple, Dict
 
 import pandas as pd
 
@@ -8,32 +11,15 @@ import torch
 import torch.utils.data as data
 from torchvision.transforms.functional import to_tensor
 
+from siammot.data import to_image_list
+
 from PIL import Image
 
 
 class VideoDataset(data.Dataset):
     """
-    VideoDataset.
-
-    Args:
-        
-    Attributes:
-        predictor (Any): The predictor object.
-        model (Any): The model object.
-        trainer (Any): The trainer object.
-        task (str): The type of model task.
-        ckpt (Any): The checkpoint object if the model loaded from *.pt file.
-        cfg (str): The model configuration if loaded from *.yaml file.
-        ckpt_path (str): The checkpoint file path.
-        overrides (dict): Overrides for the trainer object.
-        metrics (Any): The data for metrics.
-    Methods:
-        __call__(source=None, stream=False, **kwargs):
-            Alias for the predict method.
-        _new(cfg:str, verbose:bool=True) -> None:
-            Initializes a new model and infers the task type from the model definitions.
-    Returns:
-        VideoDataset: The Dataset used to load videos for training.
+    VideoDataset. Create a Dataset for the training of the SiamMOT model.
+    It creates different video clips.
     """
 
     def __init__(self, data_path: str, label_path: str, sampling_interval=250, clip_len=1000,
@@ -63,12 +49,13 @@ class VideoDataset(data.Dataset):
         self.data_path = data_path
         self.label_path = label_path
 
-        self.clips_list = glob(os.listdir(self.data_path))
+        self.clips_list = glob(os.path.join(self.data_path, "*/"))
         
         self.clip_len = clip_len
         self.transforms = transforms
         self.frames_in_clip = min(clip_len, frames_in_clip)
 
+        # Get the different information needed to create the video clips
         self.data_info = self.get_data_info()
 
         # Process dataset to get all valid video clips
@@ -103,25 +90,43 @@ class VideoDataset(data.Dataset):
     def __len__(self):
         return len(self.clips)
     
-    def get_frame(self, video_path, frame_idx):
+    def get_frame(self, video_path: str, frame_idx: int) -> torch.Tensor:
+        """
+        
+        Args: 
+            video_path (str): The path to the folder containing the requested frame
+            frame_idx (int): The index of the frame to load
+
+        Returns: 
+            frame (Tensor): The loaded frame
+        """
+        
+        # Get the list of frames
         lst_frames = sorted(glob(os.path.join(video_path, "*.jpg")))
 
+        # Load the frame
         image = Image.open(lst_frames[frame_idx]).convert('RGB')
 
         return to_tensor(image)
     
-    def get_anno(self, anno_path, frame_idx, img_shape):
-        _, width, height = img_shape
+    def get_anno(self, anno_path: str, frame_idx: int, img_shape: Tuple) -> Dict[str, torch.Tensor]:
+        # Get the shape of the image to resize the boxes
+        _, height, width = img_shape
+
+        # Get the list of annotation files
         lst_anno = sorted(os.listdir(anno_path))
         boxes = []
         labels = []
 
-        with open(lst_anno[frame_idx], 'r') as f:
-            lines = [line[:-1] for line in f.readlines()]
+        # Read the different object annotated for the image
+        with open(os.path.join(anno_path, lst_anno[frame_idx]), 'r') as f:
+            lines = [line[:-1] if line[-1] == "\n" else line for line in f.readlines()]
         
+        # Loop through the annotations and resize the boxes
+        # The boxes need to be in YOLO format: normalised xywh
         for line in lines:
             line = line.split(' ')
-            labels.append(line[0])
+            labels.append(int(line[0]))
             box = [float(val) for val in line[1:]] # Need to convert Annotations to xyxy, originally in xywh normalised
 
             box[0] = box[0] * width
@@ -130,20 +135,23 @@ class VideoDataset(data.Dataset):
             box[1] = box[1] * height
             box[3] = box[3] * height
 
-            boxes.append([box[0] - box[2]/2, box[1] - box[3]/2, box[0] + box[2]/2, box[1] + box[3]/2])
+            boxes.append([int(box[0] - box[2]/2), int(box[1] - box[3]/2), int(box[0] + box[2]/2), int(box[1] + box[3]/2)])
 
-        return {'boxes': torch.Tensor(boxes), 'labels': torch.Tensor(labels)} # 'ids': torch.Tensor([-1]*len(labels)) see if needed
+        return {'boxes': torch.Tensor(boxes), 'labels': torch.tensor(labels, dtype=torch.int64)} # 'ids': torch.Tensor([-1]*len(labels)) see if needed
 
 
     
-    def get_video_clips(self, sampling_interval_ms):
+    def get_video_clips(self, sampling_interval_ms: int):
         """
         Process the long videos to a small video chunk (with self.clip_len seconds)
         Video clips are generated in a temporal sliding window fashion
         """
         
         video_clips = []
+        # Loop through all the different video sequences
         for index in range(len(self.data_info)):
+
+            # Get the index of the frames that contains annotations
             frame_idxs_with_anno = []
             lst_anno = sorted(glob(os.path.join(self.data_info["label_path"][index], "*.txt")))
             for i in range(len(lst_anno)):
@@ -161,12 +169,15 @@ class VideoDataset(data.Dataset):
             clip_len_in_frames = max(self.frames_in_clip, int(self.clip_len / 1000. * self.data_info['fps'][index]))
             sampling_interval = int(sampling_interval_ms / 1000. * self.data_info['fps'][index])
 
+            # Sample video clips
             for idx in range(start_frame, end_frame, sampling_interval):
                 clip_frame_ids = []
+
                 # only include frames with annotation within the video clip
                 for frame_idx in range(idx, idx + clip_len_in_frames):
                     if frame_idx in frame_idxs_with_anno:
                         clip_frame_ids.append(frame_idx)
+
                 # Only include video clips that have at least self.frames_in_clip annotating frames
                 if len(clip_frame_ids) >= self.frames_in_clip:
                     video_clips.append((index, clip_frame_ids))
@@ -174,13 +185,26 @@ class VideoDataset(data.Dataset):
         return video_clips
     
     def get_data_info(self):
+        """
+        Get the info about each video sequences
+        
+        Args: 
+            None
+
+        Returns: 
+            pd.DataFrame: It contains the direction of each video sequences, the direction of each annotation folder 
+                          and the fps of the video sequence
+        """
+
         files = [os.path.join(self.data_path,file) for file in sorted(os.listdir(self.data_path))]
         labels = [os.path.join(self.label_path,file) for file in sorted(os.listdir(self.label_path))]
         fps = []
 
+        # Read the meta_info.txt file of each video sequences to get the fps value
         for file in files:
-            with open(os.path.join(file, "meta_info.ini"), 'r') as f:
-                    fps.append(int(f.readlines()[-3].split(' ')[-1][:-1])) # todo: precise position of the info
+            with open(os.path.join(file, "meta_info.txt"), 'r') as f:
+                    lines = f.readlines()
+                    fps.append(int(lines[-3].split(' ')[-1][:-1] if lines[-3].split(' ')[-1][-1] == "\n" else lines[-3].split(' ')[-1])) # todo: precise position of the info
                     
         
         return pd.DataFrame({
@@ -189,102 +213,41 @@ class VideoDataset(data.Dataset):
             'fps': fps
         })
 
-    
 
+class VideoDatasetBatchCollator:
+    """
+    From a list of samples from the dataset,
+    returns the batched images and targets.
+    This should be passed to the DataLoader
+    """
 
-"""
-    def get_video_clips_V0(self, sampling_interval_ms):
-        
-        Process the long videos to a small video chunk (with self.clip_len seconds)
-        Video clips are generated in a temporal sliding window fashion
-        
-        
-        video_clips = []
-        for index, video in enumerate(self.videos):
-            frame_idxs_with_anno = []
-            for i in range(len(video[0])):
-                if len(video[1][i]['labels']) == 0:
-                    frame_idxs_with_anno.append(i)
-            
-            if len(frame_idxs_with_anno) == 0:
-                continue
-            # The video clip may not be temporally continuous
-            start_frame = min(frame_idxs_with_anno)
-            end_frame = max(frame_idxs_with_anno)
+    def __init__(self):
+        pass
 
-            # make sure that the video clip has at least two frames
-            clip_len_in_frames = max(self.frames_in_clip, int(self.clip_len / 1000. * video[2]))
-            sampling_interval = int(sampling_interval_ms / 1000. * video[2])
+    def __call__(self, batch):
+        transposed_batch = list(zip(*batch))
+        image_batch = list(itertools.chain(*transposed_batch[0]))
+        # image_batch = to_image_list(image_batch)
 
-            for idx in range(start_frame, end_frame, sampling_interval):
-                clip_frame_ids = []
-                # only include frames with annotation within the video clip
-                for frame_idx in range(idx, idx + clip_len_in_frames):
-                    if frame_idx in frame_idxs_with_anno:
-                        clip_frame_ids.append(frame_idx)
-                # Only include video clips that have at least self.frames_in_clip annotating frames
-                if len(clip_frame_ids) >= self.frames_in_clip:
-                    video_clips.append((index, clip_frame_ids))
+        # to make sure that the id of each instance
+        # are unique across the whole batch
+        targets = transposed_batch[1]
+        video_ids = transposed_batch[2]
+        uid = 0
+        video_id_map = defaultdict(dict)
+        for targets_per_video, video_id in zip(targets, video_ids):
+            for targets_per_video_frame in targets_per_video:
+                if 'ids' in targets_per_video_frame.keys():
+                    _ids = targets_per_video_frame['ids']
+                    _uids = _ids.clone()
+                    for i in range(len(_ids)):
+                        _id = _ids[i].item()
+                        if _id not in video_id_map[video_id]:
+                            video_id_map[video_id][_id] = uid
+                            uid += 1
+                        _uids[i] = video_id_map[video_id][_id]
+                    targets_per_video_frame['ids'] = _uids
 
-        return video_clips
+        targets = list(itertools.chain(*targets))
 
-def load_videos(self):
-        videos = []
-
-        clips_list = glob(os.listdir(self.data_path))
-        for clip_path in clips_list:           
-            images = []
-            if len(glob(os.path.join(clip_path, "*.mp4"))):
-                capture = cv2.VideoCapture(glob(os.path.join(clip_path, "*.mp4"))[0])
-                fps = capture.get(cv2.CAP_PROP_FPS)
-
-                while True:
-                    ret, frame = capture.read()
-
-                    if frame is None:
-                        break
-
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frame = Image.fromarray(frame)
-
-                    images.append(frame)
-
-            elif len(glob(os.path.join(clip_path, "*.avi"))):
-                capture = cv2.VideoCapture(glob(os.path.join(clip_path, "*.avi"))[0])
-                fps = capture.get(cv2.CAP_PROP_FPS)
-
-                while True:
-                    ret, frame = capture.read()
-                    if frame is None:
-                        break
-
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frame = Image.fromarray(frame)
-                    
-                    images.append(frame)
-            else:
-                lst_images = sorted(glob(os.path.join(clip_path, '*.jpg')))
-                with open(os.path.join(clip_path, "meta_info.ini"), 'r') as f:
-                    fps = int(f.readlines()[-4].split(' ')[-1][:-1]) # todo: precise position of the info
-
-                for img_path in lst_images:
-                    frame = Image.open(img_path).convert('RGB')
-
-                    images.append(frame)
-
-            targets = [[{'boxes': torch.Tensor([]), 'labels': torch.Tensor([])}] for _ in range (len(images))]
-            with open(os.path.join(clip_path, 'labels.txt'), 'r') as f:
-                lines = [line[:-1] for line in f.readlines()]
-            
-            for line in lines:
-                frame_id = int(line[0])
-                label = torch.Tensor([int(line[1])])
-                bbox = torch.Tensor([[float(line[i]) for i in range(2,6)]])
-                targets[frame_id]['boxes'] = torch.cat((targets[frame_id]['boxes'], bbox)) # xyxy format
-                targets[frame_id]['labels'] = torch.cat((targets[frame_id]['labels'], label))
-
-            videos.append((images, targets, fps))
-
-        return videos
-
-"""
+        return image_batch, targets, video_ids

@@ -205,7 +205,7 @@ def get_locations(fmap: torch.Tensor, template_fmap: torch.Tensor,
 
     h0, w0 = template_fmap.shape[-2:]
     assert (h0 == w0)
-    border = np.int(np.floor(h0 / 2))
+    border = int(np.floor(h0 / 2))
     st_end_idx = int(border * up_scale)
     delta_x = delta_x[:, st_end_idx:-st_end_idx]
     delta_y = delta_y[:, st_end_idx:-st_end_idx]
@@ -213,7 +213,7 @@ def get_locations(fmap: torch.Tensor, template_fmap: torch.Tensor,
     locations = []
     num_boxes = delta_x.shape[0]
     for i in range(num_boxes):
-        _y, _x = torch.meshgrid((delta_y[i, :], delta_x[i, :]))
+        _y, _x = torch.meshgrid(delta_y[i, :], delta_x[i, :], indexing='ij')
         _y = _y.reshape(-1)
         _x = _x.reshape(-1)
         _xy = torch.stack((_x, _y), dim=1)

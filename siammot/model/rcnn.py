@@ -2,16 +2,18 @@
 Implements the Generalized R-CNN for SiamMOT
 """
 from typing import List, Tuple
-
+import os
 
 import torch
 from torch import nn
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
+from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn, FastRCNNPredictor
 
-from siammot.model.rpn.rpn import build_rpn
-
-from siammot.model.roi_heads import build_roi_heads
 from siammot.model.backbone.backbone import build_backbone
+from siammot.model.rpn.rpn import build_rpn
+from siammot.model.roi_heads import build_roi_heads
+
+from siammot.model.box_head.box_head import FeatureExtractor
 
 from siammot.utils import LOGGER
 
@@ -29,12 +31,63 @@ class SiamMOT(nn.Module):
     def __init__(self, cfg):
         super(SiamMOT, self).__init__()
 
-        self.transform = GeneralizedRCNNTransform(cfg.INPUT.MIN_SIZE_TRAIN, cfg.INPUT.MAX_SIZE_TRAIN,
+        self.transform_train = GeneralizedRCNNTransform(cfg.INPUT.MIN_SIZE_TRAIN, cfg.INPUT.MAX_SIZE_TRAIN,
+                                                  image_mean=[0.485, 0.456, 0.406], image_std=[0.229, 0.224, 0.225])
+        
+        self.transform_test = GeneralizedRCNNTransform(cfg.INPUT.MIN_SIZE_TEST, cfg.INPUT.MAX_SIZE_TEST,
                                                   image_mean=[0.485, 0.456, 0.406], image_std=[0.229, 0.224, 0.225])
 
-        self.backbone = build_backbone(cfg)
-        self.rpn = build_rpn(cfg, self.backbone.out_channels)
-        self.roi_heads = build_roi_heads(cfg, self.backbone.out_channels)
+        self.use_faster_rcnn = cfg.MODEL.USE_FASTER_RCNN
+
+        if self.use_faster_rcnn:
+            model = fasterrcnn_resnet50_fpn(weights='DEFAULT')
+            self.backbone = model.backbone
+            self.rpn = model.rpn
+            self.roi_heads = build_roi_heads(cfg, self.backbone.out_channels)
+
+            # replace the classifier with a new one, that has
+            # num_classes which is user-defined
+            num_classes = cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES
+            # get number of input features for the classifier
+            in_features = model.roi_heads.box_predictor.cls_score.in_features
+            # replace the pre-trained head with a new one
+            model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+            self.roi_heads.box = FeatureExtractor(model.roi_heads, ['box_head'])
+
+            del model
+
+            if os.path.exists(cfg.MODEL.BACKBONE.WEIGHT):
+                try:
+                    self.backbone.load_state_dict(torch.load(cfg.MODEL.BACKBONE.WEIGHT, map_location=torch.device('cpu')))
+                except:
+                    try:
+                        self.backbone.load_state_dict(torch.load(cfg.MODEL.BACKBONE.WEIGHT, map_location=torch.device('cuda:0')))
+                    except:
+                        pass
+            
+            if os.path.exists(cfg.MODEL.RPN.WEIGHT):
+                try:
+                    self.rpn.load_state_dict(torch.load(cfg.MODEL.RPN.WEIGHT, map_location=torch.device('cpu')))
+                except:
+                    try:
+                        self.rpn.load_state_dict(torch.load(cfg.MODEL.RPN.WEIGHT, map_location=torch.device('cuda:0')))
+                    except:
+                        pass
+        
+            if os.path.exists(cfg.MODEL.ROI_BOX_HEAD.WEIGHT):
+                try:
+                    self.roi_heads.box.load_state_dict(torch.load(cfg.MODEL.ROI_BOX_HEAD.WEIGHT, map_location=torch.device('cpu')))
+                except:
+                    try:
+                        self.roi_heads.box.load_state_dict(torch.load(cfg.MODEL.ROI_BOX_HEAD.WEIGHT, map_location=torch.device('cuda:0')))
+                    except:
+                        pass
+
+        else:
+            self.backbone = build_backbone(cfg)
+            self.rpn = build_rpn(cfg, self.backbone.out_channels)
+            self.roi_heads = build_roi_heads(cfg, self.backbone.out_channels)
 
         self.track_memory = None
 
@@ -72,16 +125,24 @@ class SiamMOT(nn.Module):
             )
             original_image_sizes.append((val[0], val[1]))
 
-        images, targets = self.transform(images, targets)
+        if self.training:
+            images, targets = self.transform_train(images, targets)
+        else:
+            images, targets = self.transform_test(images, targets)
+
         features = self.backbone(images.tensors)
-        proposals, proposal_losses = self.rpn(images, features, targets)
+
+        if self.use_faster_rcnn:
+            proposals, proposal_losses = self.rpn(images, features, targets)
+        else:
+            proposals, proposal_losses, objectness = self.rpn(images, features, targets)
         # proposals : List[Tensor[N,4]], proposal_losses: Dict[str, float]
 
         # If given detection, update boxes position given the size of reshaped images
         x, results, roi_losses = self.roi_heads(features,
                                                 proposals,
-                                                targets,
                                                 images.image_sizes,
+                                                targets,
                                                 self.track_memory,
                                                 given_detection)
         
@@ -97,7 +158,10 @@ class SiamMOT(nn.Module):
         
         detections = tmp_results
 
-        result = self.transform.postprocess(detections, images.image_sizes, original_image_sizes)
+        if self.training:
+            result = self.transform_train.postprocess(detections, images.image_sizes, original_image_sizes)
+        else:
+            result = self.transform_test.postprocess(detections, images.image_sizes, original_image_sizes)
 
         if self.training or targets: # Get loss even during validation
             losses = {}
@@ -108,16 +172,21 @@ class SiamMOT(nn.Module):
         return result
 
 
-def build_siammot(cfg, device):
+def build_siammot(cfg):
     siammot = SiamMOT(cfg)
+    LOGGER.info(f"{cfg.MODEL.BACKBONE.CONV_BODY.upper()} backbone")
 
     if cfg.MODEL.WEIGHT:
         try:
-            siammot.load_state_dict(torch.load(cfg.MODEL.WEIGHT), map_location=device)
+            siammot.load_state_dict(torch.load(cfg.MODEL.WEIGHT, map_location=torch.device('cpu')))
+            LOGGER.info("Model Weights loaded")
         except:
-            
-            cfg.MODEL.WEIGHT = ""
-            LOGGER.warning("WARNING ⚠️ The model's architecture and the weights are not compatible\n Using new model instead")
+            try:
+                siammot.load_state_dict(torch.load(cfg.MODEL.WEIGHT, map_location=torch.device('cuda:0')))
+                LOGGER.info("Model Weights loaded")
+            except:
+                cfg.MODEL.WEIGHT = ""
+                LOGGER.warning("WARNING ⚠️ The model's architecture and the weights are not compatible\n Using new model instead")
 
 
     return siammot

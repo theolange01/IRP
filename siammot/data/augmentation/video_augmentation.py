@@ -3,88 +3,30 @@ from typing import Optional, Tuple, Dict
 from torch import Tensor
 import random
 from torchvision.transforms import functional as F
-from torchvision.transforms import ColorJitter as ImageColorJitter
-from torchvision.models.detection.transform import resize_boxes
-
-from .image_augmentation import ImageResize
+from torchvision.transforms import ColorJitter as ImageColorJitter, GaussianBlur
 
 
-class VideoTransformer(object):
-    def __init__(self, transform_fn=None):
-        if transform_fn is None:
-            raise KeyError('Transform function should not be None.')
-        self.transform_fn = transform_fn
-
-    def __call__(self, video, target=None):
-        """
-        A data transformation wrapper for video
-        :param video: a list of images
-        :param target: a list of BoxList (per image)
-        """
+class SiamVideoBlur(GaussianBlur):
+    def __init__(self,
+                 kernel_size=3,
+                 sigma=(0.1, 2.0)):
+        super(SiamVideoBlur, self).__init__(kernel_size, sigma=sigma)
+        
+    def __call__(self, video, target):
         if not isinstance(video, (list, tuple)):
-            return self.transform_fn(video, target)
-
-        new_video = []
-        new_target = []
-        for (image, image_target) in zip(video, target):
-            (image, image_target) = self.transform_fn(image, image_target)
-            new_video.append(image)
-            new_target.append(image_target)
-
-        return new_video, new_target
-
-
-
-
-class SiamVideoResize(ImageResize):
-    def __init__(self, min_size, max_size, size_divisibility):
-        super(SiamVideoResize, self).__init__(min_size, max_size, size_divisibility)
-
-    def __call__(self, video, target=None):
-
-        if not isinstance(video, (list, tuple)):
-            return super(SiamVideoResize, self).__call__(video, target)
-
-        assert len(video) >= 1
-        new_size = self.get_size(video[0].size)
-
-        new_video = []
-        new_target = []
-        for (image, image_target) in zip(video, target):
-            (image, image_target) = self._resize(image, new_size, image_target)
-            new_video.append(image)
-            new_target.append(image_target)
-
-        return new_video, new_target
-
-    def resize(
-        self,
-        image: Tensor,
-        target: Optional[Dict[str, Tensor]] = None,
-    ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
-        h, w = image.shape[-2:]
-        if self.training:
-            if self._skip_resize:
-                return image, target
-            size = self.torch_choice(self.min_size)
-        else:
-            size = self.min_size[-1]
-        image, target = _resize_image_and_masks(image, size, self.max_size, target, self.fixed_size)
-
-        if target is None:
-            return image, target
-
-        bbox = target["boxes"]
-        bbox = resize_boxes(bbox, (h, w), image.shape[-2:])
-        target["boxes"] = bbox
-
-        if "keypoints" in target:
-            keypoints = target["keypoints"]
-            keypoints = resize_keypoints(keypoints, (h, w), image.shape[-2:])
-            target["keypoints"] = keypoints
-        return image, target
+            return video, target
+        
+        sigma = self.get_params(self.sigma[0], self.sigma[1])
     
-
+        
+        new_video = []
+        new_target = []
+        for (image, image_target) in zip(video, target):
+            new_video.append(F.gaussian_blur(image, self.kernel_size, [sigma, sigma]))
+            new_target.append(image_target)
+        
+        return new_video, new_target
+          
 
 class SiamVideoRandomHorizontalFlip(object):
     def __init__(self, prob=0.5):
@@ -101,7 +43,7 @@ class SiamVideoRandomHorizontalFlip(object):
         if random.random() < self.prob:
             for (image, image_target) in zip(video, target):
                 new_video.append(F.hflip(image))
-                new_target.append(image_target[[1,0,3,2]])
+                new_target.append({"boxes": image_target["boxes"][:,[1,0,3,2]], "labels": image_target["labels"]})
         else:
             new_video = video
             new_target = target
@@ -123,13 +65,24 @@ class SiamVideoColorJitter(ImageColorJitter):
 
         idx = random.choice((0, 1))
         # all frames in the video should go through the same transformation
-        transform = self.get_params(self.brightness, self.contrast,
-                                    self.saturation, self.hue)
+        fn_idx, brightness_factor, contrast_factor, saturation_factor, hue_factor = self.get_params(
+            self.brightness, self.contrast, self.saturation, self.hue
+        )
+
         new_video = []
         new_target = []
         for i, (image, image_target) in enumerate(zip(video, target)):
             if i == idx:
-                image = transform(image)
+                for fn_id in fn_idx:
+                    if fn_id == 0 and brightness_factor is not None:
+                        image = F.adjust_brightness(image, brightness_factor)
+                    elif fn_id == 1 and contrast_factor is not None:
+                        image = F.adjust_contrast(image, contrast_factor)
+                    elif fn_id == 2 and saturation_factor is not None:
+                        image = F.adjust_saturation(image, saturation_factor)
+                    elif fn_id == 3 and hue_factor is not None:
+                        image = F.adjust_hue(image, hue_factor)
+                
             new_video.append(image)
             new_target.append(image_target)
 

@@ -43,39 +43,54 @@ class CombinedROIHeads(nn.ModuleDict):
                 loss_box = {}
         losses.update(loss_box)
 
+        # detections to List[BoxList]
+        tmp_detections = []
+        for index, detection in enumerate(detections):
+            box = BoxList(detection['boxes'], image_shapes[index])
+            box.add_field('labels', detection['labels'])
+            box.add_field('scores', detection['scores'])
+            try:
+                box.add_field('ids', detection['ids'])
+            except:
+                box.add_field('ids', torch.Tensor([-1 for _ in range(len(detection['boxes']))], device = detection['labels'].device))
+            tmp_detections.append(box)
+        
+        detections = tmp_detections
+
+        del tmp_targets
+
 
         if self.cfg.MODEL.TRACK_ON:
+            features = list(features.values())
+
             tmp_proposals = []
-            for proposal in proposals:
-                tmp_proposals.append(BoxList(proposal, image_shapes)) # 1 BoxList per img
+            for index, proposal in enumerate(proposals):
+                tmp_proposals.append(BoxList(proposal, image_shapes[index])) # 1 BoxList per img
 
             proposals = tmp_proposals
             # proposals: List[BoxList]
+            del tmp_proposals
 
             if targets:
                 tmp_targets = []
-                for target in range(targets):
-                    box = BoxList(target['boxes'], image_shapes)
-                    box.add_field('labels', [target['labels']])
+                for index, target in enumerate(targets):
+                    box = BoxList(target['boxes'], image_shapes[index])
+                    box.add_field('labels', target['labels'])
+                    try:
+                        box.add_field('ids', target['ids'])
+                    except:
+                        box.add_field('ids', torch.Tensor([i for i in range(len(target['labels']))]).to(target['labels'].device))
                     tmp_targets.append(box)
 
                 targets = tmp_targets
                 # targets: List[BoxList]
+                del tmp_targets
 
             y, tracks, loss_track = self.track(features, proposals, targets, track_memory)
             losses.update(loss_track)
 
             # solver is only needed during inference
             if not self.training:
-
-                # detections to List[BoxList]
-                tmp_detections = []
-                for detection in detections:
-                    tmp_detections.append({'boxes': detection.bboxes,
-                                           'labels': detection.get_field('labels'),
-                                           'scores': detection.get_field('scores')})
-                
-                detection = tmp_detections
 
                 if tracks is not None:
                     tracks = self._refine_tracks(features, tracks)
@@ -109,10 +124,7 @@ class CombinedROIHeads(nn.ModuleDict):
         det_scores = tracks[0].get_field('scores')
         det_boxes = tracks[0].bbox
 
-        if self.cfg.MODEL.TRACK_HEAD.TRACKTOR:
-            scores = det_scores
-        else:
-            scores = (det_scores + track_scores) / 2.
+        scores = (det_scores + track_scores) / 2.
         boxes = det_boxes
 
         r_tracks = BoxList(boxes, image_size=tracks[0].size, mode=tracks[0].mode)
@@ -126,8 +138,8 @@ class CombinedROIHeads(nn.ModuleDict):
 def build_roi_heads(cfg, in_channels):
     # individually create the heads, that will be combined together
     roi_heads = []
-    if not cfg.MODEL.RPN_ONLY:
-        roi_heads.append(("box", build_roi_box_head(cfg, in_channels)))
+    roi_heads.append(("box", build_roi_box_head(cfg, in_channels)))  
+
     if cfg.MODEL.TRACK_ON:
         track_utils, track_pool = build_track_utils(cfg)
         roi_heads.append(("track", build_track_head(cfg, track_utils, track_pool)))

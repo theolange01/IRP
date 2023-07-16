@@ -1,10 +1,13 @@
 import argparse
 import os
-from typing import Tuple
+import sys
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 import torch
 
-from siammot.utils import LOGGER
+from siammot.utils import colorstr, LOGGER
 from siammot.utils.torch_utils import select_device
 
 from siammot.configs.default import cfg
@@ -17,29 +20,39 @@ def train(cfg, model_weight="", source="", device=None, epochs=100, batch_size=1
     if os.path.exists(model_weight):
         cfg.MODEL.WEIGHT = model_weight
 
+    if cfg.MODEL.USE_FASTER_RCNN:
+        cfg.MODEL.BACKBONE.CONV_BODY = "Resnet50"
+        cfg.MODEL.BACKBONE.OUT_CHANNEL = 256
+
     i = 1
-    while os.exists(train_dir):
-        train_dir = train_dir + "i"
+    _train_dir = train_dir
+    while os.path.exists(_train_dir):
+        _train_dir = train_dir + str(i)
         i += 1
+
+    train_dir = _train_dir
+    del _train_dir
+        
+    os.makedirs(train_dir, exist_ok=True)
 
     cfg.SOLVER.EPOCHS = epochs
     cfg.SOLVER.VIDEO_CLIPS_PER_BATCH = batch_size 
 
     # build model
-    model = build_siammot(cfg, device)
+    model = build_siammot(cfg)
     model.to(device)
 
     optimizer = make_optimizer(cfg, model)
     scheduler = make_lr_scheduler(cfg, optimizer)
 
-    LOGGER.info("Creating the dataloader")
-    data_loaders = build_train_data_loader(cfg, source, batch_size)
+    LOGGER.info("Creating the dataloaders...")
+    data_loaders = build_train_data_loader(cfg, (source, ), batch_size)
     if data_loaders['val']:
-        LOGGER.info("Trained and Validation DataLoaders created")
-    else:
-        LOGGER.info("DataLoaders created, training only")
+        LOGGER.info(f"{colorstr('DataLoaders:')} Training and Validation ✅")
+    else: 
+        LOGGER.info(f"{colorstr('DataLoaders:')} Training only ✅")
 
-    start_epochs = None
+    start_epochs = 0
     if ckpt:
         try:
             checkpoint = torch.load(ckpt)
@@ -48,19 +61,24 @@ def train(cfg, model_weight="", source="", device=None, epochs=100, batch_size=1
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
             start_epochs = checkpoint['epochs']
-            LOGGER.info("WARNING ⚠️ The model saved in the checkpoint has not the same architecture as the one created given the config_file")
+            LOGGER.info("The Checkpoint data has been successfully loaded ✅")
             del checkpoint
         except:
             LOGGER.warning("WARNING ⚠️ The model saved in the checkpoint has not the same architecture as the one created given the config_file")
 
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
-    epochs = cfg.SOLVER.MAX_ITER
 
     cfg.freeze()
-    with open(os.path.join(train_dir, "SiamMOT_" + cfg.MODEL.BACKBONE.CONV_BODY.upper() + ".yaml"), 'w') as f:
-        f.write(cfg.dump())
+    if not cfg.MODEL.USE_FASTER_RCNN:
+        with open(os.path.join(train_dir, "SiamMOT_" + cfg.MODEL.BACKBONE.CONV_BODY.upper() + ".yaml"), 'w') as f:
+            f.write(cfg.dump())
+    else:
+        with open(os.path.join(train_dir, "SiamMOT_" + "fasterrcnn_resnet50_fpn".upper() + ".yaml"), 'w') as f:
+            f.write(cfg.dump())
 
     model, history = do_train(model, data_loaders, optimizer, scheduler, device, epochs, checkpoint_period, train_dir, start_epochs)
+
+    LOGGER.info(f"Trainig successful\nResults available at '{train_dir}'")
 
     return model, history
 
@@ -69,26 +87,26 @@ def main():
     parser = argparse.ArgumentParser(description="PyTorch SiamMOT Training")
     parser.add_argument("--config-file", default="", metavar="FILE", help="path to config file", type=str)
     parser.add_argument("--model", default="", metavar="FILE", help="path to the model weight", type=str)
-    parser.add_argument("--source", type=Tuple(str), help="Path to the training data, can be (Train, ) or (Train, Val)")
+    parser.add_argument("--source", type=str, help="Path to the training data, can be (Train, ) or (Train, Val)")
     parser.add_argument("--device", default=None, help='device to run on, i.e "cpu" or "cuda:0"', type=str)
     parser.add_argument("--epochs", default=100, type=int)
-    parser.add_argument("--batch_size", default=16, type=int, help="Batch size for training")
+    parser.add_argument("--batch_size", default=8, type=int, help="Batch size for training")
     parser.add_argument("--checkpoint", default="", help="Path to a previous checkpoint to resume training", type=str)
     parser.add_argument("--train-dir", default="runs/train", help="training folder where training artifacts are dumped", type=str)
 
     args = parser.parse_args()
 
-    cfg.merge_from_file(args.config_file) 
+    try: 
+        cfg.merge_from_file(args.config_file) 
+    except:
+        pass
     
-
     if args.device in ['gpu']:
         args.device = 'cuda:0'
 
     device = select_device(args.device, args.batch_size)
 
-    _, _ = train(cfg, args.model, args.source, device, args.epochs, args.batch_size, args.train_dir, args.ckpt)
-
-    LOGGER.info(f"Trainig successful\nResults available at '{args.train_dir}'")
+    _, _ = train(cfg, args.model, args.source, device, args.epochs, args.batch_size, args.train_dir, args.checkpoint)
 
 
 if __name__ == "__main__":

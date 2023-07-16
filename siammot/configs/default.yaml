@@ -1,0 +1,12 @@
+MODEL:
+  TRACK_ON: False
+  USE_FASTER_RCNN: True
+
+#  BACKBONE: 
+#    WEIGHT: "siammot/weight/DLA34_BACKBONE.pt"
+
+#  RPN: 
+#    WEIGHT: "siammot/weight/RPN.pt"
+
+#  ROI_BOX_HEAD: 
+#    WEIGHT: "siammot/weight/box_head.pt"

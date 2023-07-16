@@ -1,197 +1,155 @@
 import os
 import time
+from glob import glob
+import itertools
 
-import torch
+import numpy as np
+import pandas as pd
 from tqdm import tqdm
+import cv2
 from PIL import Image
 
+import torch
 import torch.utils.data as data
-from pycocotools.coco import COCO
-from gluoncv.utils.bbox import bbox_xywh_to_xyxy, bbox_clip_xyxy
-
-from siammot.structures.bounding_box import BoxList
-
+from torchvision.transforms.functional import to_tensor
 
 class ImageDataset(data.Dataset):
-    def __init__(self,
-                 dataset: COCO,
-                 image_dir,
-                 transforms=None,
-                 frames_per_image=1,
-                 amodal=False,
-                 skip_empty=True,
-                 min_object_area=0,
-                 use_crowd=False,
-                 include_bg=False,
-                 ):
-        """
-        :param dataset: the ingested dataset with COCO-format
-        :param transforms: image transformation
-        :param frames_per_image: how many image copies are generated from a single image
-        :param amodal: whether to use amodal ground truth (no image boundary clipping)
-        :param include_bg: whether to include the full background images during training
-        """
-
-        self.dataset = dataset
-        self.image_dir = image_dir
+    def __init__(self, data_path: str, label_path: str, transforms=None):
+    
+        if not os.path.exists(data_path):
+            raise FileNotFoundError(f"The given path '{data_path}' does not exists or is wrong")
+            
+        if not os.path.exists(label_path):
+            raise FileNotFoundError(f"The given path '{data_path}' does not exists or is wrong")
+    
+        self.data_path = data_path
+        self.label_path = label_path
+    
+        self.clips_list = glob(os.path.join(self.data_path, "*/"))
+        
         self.transforms = transforms
-        self.frames_per_image = frames_per_image
-
-        self._skip_empty = skip_empty
-        self._min_object_area = min_object_area
-        self._use_crowd = use_crowd
-        self._amodal = amodal
-        self._include_bg = include_bg
-        self._det_classes = [c['name'] for c in self.dataset.loadCats(self.dataset.getCatIds())]
-
-        # These are tha mapping table of COCO labels
-        self.json_category_id_to_contiguous_id = {
-            v: i+1 for i, v in enumerate(self.dataset.getCatIds())
-        }
-
-        self._labels, self._im_aspect_ratios, self._items, self._ids \
-            = self._dataset_preprocess()
-
-        self.id_to_img_map = {k: v for k, v in enumerate(self._ids)}
-
+    
+        # Get the different information needed to load the images and targets
+        self.data_info = self.get_data_info()
+    
     def __getitem__(self, index):
-        img_name = self._items[index]
-        img_path = os.path.join(self.image_dir, img_name)
-
-        img = Image.open(img_path).convert('RGB')
-        target = self._get_target(img, index)
-
-        # for tracking purposes, two frames are needed
-        # the pairs would go into random augmentation to generate fake motion
-        video_clip = [img for _ in range(self.frames_per_image)]
-        video_target = [target for _ in range(self.frames_per_image)]
-
-        if self.transforms is not None:
-            video_clip, video_target = self.transforms(video_clip, video_target)
-
-        return video_clip, video_target, img_name
-
-    def _get_target(self, img, index):
-
-        # a list of label (x1, y1, x2, y2, class_id, instance_id)
-        labels = self._labels[index]
-        if len(labels) == 0:
-            assert self._include_bg is True, "The image does not has ground truth"
-            bbox = torch.as_tensor(labels).reshape(-1, 4)
-            class_ids = torch.as_tensor(labels)
-            instance_ids = torch.as_tensor(labels)
-            empty_boxlist = BoxList(bbox, img.size, mode="xyxy")
-            empty_boxlist.add_field("labels", class_ids)
-            empty_boxlist.add_field("ids", instance_ids)
-            return empty_boxlist
-
-        labels = torch.as_tensor(labels).reshape(-1, 6)
-        boxes = labels[:, :4]
-        target = BoxList(boxes, img.size, mode="xyxy")
-
-        class_ids = labels[:, 4].clone().to(torch.int64)
-        target.add_field("labels", class_ids)
-
-        instance_ids = labels[:, -1].clone().to(torch.int64)
-        target.add_field("ids", instance_ids)
-
-        if not self._amodal:
-            target = target.clip_to_image(remove_empty=True)
-
-        return target
-
-    def _dataset_preprocess(self):
-        items = []
+        image_path = self.data_info["image_path"][index]
+        anno_path = self.data_info["labels_path"][index]
+        
+        # Load the frame
+        image =  cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+        height, width, _ = image.shape
+        
+        bboxes = []
         labels = []
-        ids = []
-        im_aspect_ratios = []
-        image_ids = sorted(self.dataset.getImgIds())
-        instance_id = 0
-        rm_redundant = 0
-        all_amodal = 0
 
-        for entry in tqdm(self.dataset.loadImgs(image_ids)):
-            label, num_instances, num_redundant, num_amodal\
-                = self._check_load_bbox(entry, instance_id)
-            if not label and not self._include_bg:
-                continue
-            instance_id += num_instances
-            rm_redundant += num_redundant
-            all_amodal += num_amodal
-            labels.append(label)
-            ids.append(entry['id'])
-            items.append(entry['file_name'])
-            im_aspect_ratios.append(float(entry['width']) / entry['height'])
+        # Read the different object annotated for the image
+        with open(anno_path, 'r') as f:
+            lines = [line[:-1] if line[-1] == "\n" else line for line in f.readlines()]
+        
+        # Loop through the annotations and resize the boxes
+        # The boxes need to be in YOLO format: normalised xywh
+        
+        for line in lines:
+            line = line.split(' ')
+            labels.append(1+int(line[0]))
+            box = [float(val) for val in line[1:]] # Need to convert Annotations to xyxy, originally in xywh normalised
 
-        print('{} / {} valid images...'.format(len(labels), len(image_ids)))
-        print('{} instances...'.format(instance_id))
-        print('{} redundant instances are removed...'.format(rm_redundant))
-        print('{} amodal instances...'.format(all_amodal))
-        return labels, im_aspect_ratios, items, ids
+            box[0] = int(box[0] * width)
+            box[2] = int(box[2] * width)
 
-    def _check_load_bbox(self, entry, instance_id):
-        """
-        Check and load ground-truth labels
-        """
-        entry_id = entry['id']
-        entry_id = [entry_id] if not isinstance(entry_id, (list, tuple)) else entry_id
-        ann_ids = self.dataset.getAnnIds(imgIds=entry_id, iscrowd=None)
-        objs = self.dataset.loadAnns(ann_ids)
+            box[1] = int(box[1] * height)
+            box[3] = int(box[3] * height)
+            
+            box = [int(np.floor(np.max((0, box[0] - box[2]/2)))), int(np.floor(np.max((0, box[1] - box[3]/2)))), int(np.ceil(np.min((width, box[0] + box[2]/2)))), int(np.ceil(np.min((height, box[1] + box[3]/2))))]
+            if box[0] == box[2]:
+                if box[0] != 0:
+                    box[0] -= 1
+                
+                if box[2] != width:
+                    box[2] += 1
+            
+            if box[1] == box[3]:
+                if box[1] != 0:
+                    box[1] -= 1
+                
+                if box[3] != height:
+                    box[3] += 1
+            
+            bboxes.append(box)
+        
+        # Video clip-level augmentation
+        if self.transforms is not None:
+            transformed = self.transforms(image=image, bboxes=bboxes, class_labels=labels)
+            image = transformed["image"]
+            bboxes = transformed['bboxes']
+            labels = transformed['class_labels']
+            
+        image = to_tensor(Image.fromarray(image))
+        target = {"boxes": torch.Tensor(bboxes), "labels": torch.tensor(labels, dtype=torch.int64)}
 
-        # check valid bboxes
-        valid_objs = []
-        width = entry['width']
-        height = entry['height']
-        _instance_count = 0
-        _redudant_count = 0
-        _amodal_count = 0
-        unique_bbs = set()
-        for obj in objs:
-            if obj.get('ignore', 0) == 1:
-                continue
-            if not self._use_crowd and obj.get('iscrowd', 0):
-                continue
-            if self._amodal:
-                xmin, ymin, xmax, ymax = bbox_xywh_to_xyxy(obj['bbox'])
-                if xmin < 0 or ymin < 0 or xmax > width or ymax > height:
-                    _amodal_count += 1
-            else:
-                xmin, ymin, xmax, ymax = bbox_clip_xyxy(bbox_xywh_to_xyxy(obj['bbox']), width, height)
+        return image, target, index
 
-            if (xmin, ymin, xmax, ymax) in unique_bbs:
-                _redudant_count += 1
-                continue
-
-            box_w = (xmax - xmin)
-            box_h = (ymax - ymin)
-            area = box_w * box_h
-            if area <= self._min_object_area:
-                continue
-
-            # require non-zero box area
-            if xmax > xmin and ymax > ymin:
-                unique_bbs.add((xmin, ymin, xmax, ymax))
-                contiguous_cid = self.json_category_id_to_contiguous_id[obj['category_id']]
-                valid_objs.append([xmin, ymin, xmax, ymax, contiguous_cid,
-                                   instance_id+_instance_count])
-                _instance_count += 1
-        if not valid_objs:
-            if not self._skip_empty:
-                # dummy invalid labels if no valid objects are found
-                valid_objs.append([-1, -1, -1, -1, -1, -1])
-        return valid_objs, _instance_count, _redudant_count, _amodal_count
 
     def __len__(self):
-        return len(self._items)
+        return len(self.data_info)
+          
+    
+    def get_data_info(self):
+        """
+        Get the info about each video sequences
+        
+        Args: 
+            None
 
-    def get_img_info(self, index):
-        img_id = self.id_to_img_map[index]
-        img_data = self.dataset.imgs[img_id]
-        return img_data
+        Returns: 
+            pd.DataFrame: It contains the direction of each video sequences, the direction of each annotation folder 
+                          and the fps of the video sequence
+        """
 
-    @property
-    def classes(self):
-        return self._det_classes
+        files = [os.path.join(self.data_path,file) for file in sorted(os.listdir(self.data_path))]
+        labels = [os.path.join(self.label_path,file) for file in sorted(os.listdir(self.label_path))]
+        
+        image_path = []
+        labels_path = []
+        
+        for index in range(len(files)):
+            video_path = files[index]
+            anno_path = labels[index]
+            
+            lst_anno = sorted(os.listdir(anno_path))
+            
+            for anno in lst_anno:
+                 with open(os.path.join(anno_path, anno), 'r') as f:
+                    if len(f.readlines()) != 0:
+                
+                        image_path.append(os.path.join(video_path, anno.split(".")[0] + ".jpg"))
+                        labels_path.append(os.path.join(anno_path, anno))
+        
+        return pd.DataFrame({
+            'image_path': image_path,
+            'labels_path': labels_path,
+        })
 
-    def get_im_aspect_ratio(self):
-        return self._im_aspect_ratios
+
+class ImageDatasetBatchCollator:
+    """
+    From a list of samples from the dataset,
+    returns the batched images and targets.
+    This should be passed to the DataLoader
+    """
+
+    def __init__(self):
+        pass
+
+    def __call__(self, batch):
+        transposed_batch = list(zip(*batch))
+        # image_batch = to_image_list(image_batch)
+        
+        image_batch = list(transposed_batch[0])
+        targets = transposed_batch[1]
+        video_ids = transposed_batch[2]
+        
+        return image_batch, targets, video_ids
+
+        

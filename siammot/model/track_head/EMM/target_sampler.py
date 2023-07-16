@@ -27,6 +27,12 @@ class EMMTargetSampler(object):
         match_quality_matrix = boxlist_iou(gt, proposal)
         matched_idxs = self.proposal_iou_matcher(match_quality_matrix)
 
+        if matched_idxs.shape[0] == 0:
+            print(match_quality_matrix)
+            print(proposal)
+            print(gt)
+            return 0
+
         target = gt.copy_with_fields(("ids", "labels"))
         matched_target = target[torch.clamp_min(matched_idxs, -1)]
         proposal_ids = matched_target.get_field('ids')
@@ -201,6 +207,7 @@ class EMMTargetSampler(object):
         track_target = []
         track_pair = []
         for src_gt, tar_gt, proposal in zip(src_gts, tar_gts, proposals):
+            
             pos_src_boxlist, pos_pair_boxlist, pos_tar_boxlist = ([] for _ in range(3))
             hn_src_boxlist, hn_pair_boxlist, hn_tar_boxlist = ([] for _ in range(3))
 
@@ -213,7 +220,7 @@ class EMMTargetSampler(object):
                 _src_box = src_gt[src_ids == src_id]
                 _tar_box = self.get_target_box(tar_gt, tar_ids == src_id)
 
-                pos_src_boxes = self.generate_pos(_src_box, proposal)
+                pos_src_boxes = self.generate_pos(_src_box, proposal) #If no proposal with a matching id -> empty BoxList
                 pos_pair_boxes = copy.deepcopy(pos_src_boxes)
                 pos_tar_boxes = self.duplicate_boxlist(_tar_box, len(pos_src_boxes))
 
@@ -250,13 +257,16 @@ class EMMTargetSampler(object):
         track_target = []
         for proposal, gt, pos_hn_box in zip(proposals, gts, pos_hn_boxes):
             proposal_ids = proposal.get_field('ids')
-            objectness = proposal.get_field('objectness')
+            # objectness = proposal.get_field('objectness')
 
             proposal_h = proposal.bbox[:, 3] - proposal.bbox[:, 1]
             proposal_w = proposal.bbox[:, 2] - proposal.bbox[:, 0]
 
-            neg_indices = ((proposal_ids == -1) & (objectness >= 0.3) &
+            neg_indices = ((proposal_ids == -1) &
                            (proposal_h >= 5) & (proposal_w >= 5))
+
+            #neg_indices = ((proposal_ids == -1) & (objectness >= 0.3) &
+            #               (proposal_h >= 5) & (proposal_w >= 5))
             idxs = neg_indices.nonzero()
 
             neg_samples = min(idxs.numel(), self.proposals_per_image - len(pos_hn_box))
@@ -295,7 +305,7 @@ def make_emm_target_sampler(cfg,
     matcher = Matcher(
         cfg.MODEL.TRACK_HEAD.FG_IOU_THRESHOLD,
         cfg.MODEL.TRACK_HEAD.BG_IOU_THRESHOLD,
-        allow_low_quality_matches=False,
+        allow_low_quality_matches=True,
     )
 
     track_sampler = EMMTargetSampler(track_utils, matcher,

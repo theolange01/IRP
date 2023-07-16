@@ -1,6 +1,7 @@
-from torchvision.models.detection.rpn import AnchorGenerator, RPNHead, concat_box_prediction_layers, permute_and_flatten
-
+import os
 from typing import Dict, List, Optional, Tuple
+
+from torchvision.models.detection.rpn import AnchorGenerator, RPNHead, concat_box_prediction_layers, permute_and_flatten
 
 import torch
 from torch import nn, Tensor
@@ -288,9 +289,21 @@ class RegionProposalNetwork(torch.nn.Module):
                 "loss_objectness": loss_objectness,
                 "loss_rpn_box_reg": loss_rpn_box_reg,
             }
-        return boxes, losses
+        return boxes, losses, scores
 
 def build_rpn(cfg, in_channels):
+    """
+    Function to build the RPN layer. 
+    Given a set of features, the RPN layer will propose Region of Interest for the Box predictor
+    
+    Args:
+        cfg (yacs.config.CfgNode): Model configuration
+        in_channels (int): Size of the input channel
+
+    Returns:
+        rpn (torch.nn.Module): RPN module
+    """
+    
     anchor_sizes = cfg.MODEL.RPN.ANCHOR_SIZES
     aspect_ratios = cfg.MODEL.RPN.ASPECT_RATIOS * len(anchor_sizes)    
     
@@ -301,6 +314,7 @@ def build_rpn(cfg, in_channels):
     rpn_pre_nms_top_n = dict(training=cfg.MODEL.RPN.PRE_NMS_TOP_N_TRAIN, testing=cfg.MODEL.RPN.PRE_NMS_TOP_N_TEST)
     rpn_post_nms_top_n = dict(training=cfg.MODEL.RPN.FPN_POST_NMS_TOP_N_TRAIN, testing=cfg.MODEL.RPN.FPN_POST_NMS_TOP_N_TEST)
 
+    # Create the RPN module
     rpn = RegionProposalNetwork(
         rpn_anchor_generator,
         rpn_head,
@@ -313,5 +327,15 @@ def build_rpn(cfg, in_channels):
         cfg.MODEL.RPN.NMS_THRESH,
         score_thresh=cfg.MODEL.RPN.SCORE_THRESH,
     )
+
+    # Load weights when possible
+    if os.path.exists(cfg.MODEL.RPN.WEIGHT):
+        try:
+            rpn.load_state_dict(torch.load(cfg.MODEL.RPN.WEIGHT, map_location=torch.device('cpu')))
+        except:
+            try:
+                rpn.load_state_dict(torch.load(cfg.MODEL.RPN.WEIGHT, map_location=torch.device('cuda:0')))
+            except:
+                pass
     
     return rpn

@@ -53,9 +53,14 @@ class TrackUtils(object):
 
         if isinstance(f, tuple):
             shuffle_f = []
-            for i, _f in enumerate(f):
+            for _, _f in enumerate(f):
                 shuffle_f.append(shuffle_feature_tensor(_f))
             shuffle_f = tuple(shuffle_f)
+        elif isinstance(f, list):
+            shuffle_f = []
+            for _, _f in enumerate(f):
+                shuffle_f.append(shuffle_feature_tensor(_f))
+            shuffle_f = list(shuffle_f)
         else:
             shuffle_f = shuffle_feature_tensor(f)
 

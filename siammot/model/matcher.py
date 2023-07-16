@@ -57,6 +57,7 @@ class Matcher(object):
                     "No ground-truth boxes available for one of the images "
                     "during training")
             else:
+                return torch.tensor([-1 for _ in range(match_quality_matrix.shape[0])]).to(match_quality_matrix.device)
                 raise ValueError(
                     "No proposal boxes available for one of the images "
                     "during training")
@@ -88,12 +89,14 @@ class Matcher(object):
         it is unmatched, then match it to the ground-truth with which it has the highest
         quality value.
         """
+
         # For each gt, find the prediction with which it has highest quality
         highest_quality_foreach_gt, _ = match_quality_matrix.max(dim=1)
         # Find highest quality match available, even if it is low, including ties
         gt_pred_pairs_of_highest_quality = torch.nonzero(
             match_quality_matrix == highest_quality_foreach_gt[:, None]
         )
+
         # Example gt_pred_pairs_of_highest_quality:
         #   tensor([[    0, 39796],
         #           [    1, 32055],
