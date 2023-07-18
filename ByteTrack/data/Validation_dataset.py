@@ -35,7 +35,7 @@ class ValidationDataset(data.Dataset):
         frame_path = self.data_info["frame_path"][index]
         label_path = self.data_info["label_path"][index]
 
-        frame = cv2.imread(Image.open(frame_path))
+        frame = cv2.cvtColor(cv2.imread(frame_path), cv2.COLOR_BGR2RGB)
         height, width, _ = frame.shape
 
         bboxes = []

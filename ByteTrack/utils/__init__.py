@@ -172,7 +172,7 @@ def check_yaml(file, suffix=''):
     else:# search
         files = []
         for d in 'models', 'datasets', 'tracker/cfg':  # search directories
-            files.extend(glob.glob(str(ROOT / d / '**' / file), recursive=True))  # find file
+            files.extend(glob(str(ROOT / d / '**' / file), recursive=True))  # find file
         if not files:
             raise FileNotFoundError(f"'{file}' does not exist")
         elif len(files) > 1:

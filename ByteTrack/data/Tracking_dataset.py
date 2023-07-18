@@ -35,11 +35,12 @@ class TrackingDataset(data.Dataset):
 
             ret, frame = self.capture.read()
             assert ret
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             if index == len(self.data_info)-1:
                 self.capture.release()
         else:
-            frame = cv2.imread(frame_path)
+            frame = cv2.cvtColor(cv2.imread(frame_path), cv2.COLOR_BGR2RGB)
         
         return frame_path, frame
 

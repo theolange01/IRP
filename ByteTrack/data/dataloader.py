@@ -12,8 +12,8 @@ from .utils import IMG_FORMATS, VID_FORMATS
 
 from PIL import Image
 
-from .Tracking_dataset import tracking_dataset
-from .Validation_dataset import validation_dataset
+from .tracking_dataset import TrackingDataset
+from .validation_dataset import ValidationDataset
 
 
 class Collator:
@@ -30,28 +30,34 @@ class Collator:
         return batch
 
 def load_track_dataloader(source):
-    if isinstance(source, np.array):
-        return [{'data': [(None, source)], 'fps': None, "type": "frame"}]
+    if isinstance(source, np.ndarray):
+        try:
+            source = cv2.cvtColor(source, cv2.COLOR_BGR2RGB)
+        except:
+            pass
+        return {'data': [(None, source)], 'fps': None, "type": "frame"}
     elif isinstance(source, Image):
-        source = cv2.cvtColor(np.array(source), cv2.COLOR_RGB2BGR)
-        return [{'data': [(None, source)], 'fps': None, "type": "frame"}]
+        try:
+            source = cv2.cvtColor(np.array(source), cv2.COLOR_BGR2RGB)
+        except:
+            source = np.array(source)
+        return {'data': [(None, source)], 'fps': None, "type": "frame"}
     elif isinstance(source, torch.Tensor):
-        source = cv2.cvtColor(source.numpy().transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
-        return [{'data': [(None, source)], 'fps': None, "type": "frame"}]
+        source = source.numpy().transpose(1, 2, 0)
+        return {'data': [(None, source)], 'fps': None, "type": "frame"}
     elif isinstance(source, str):
         if not os.path.exists(source):
             raise FileNotFoundError(f"The given path '{source}' does not exists or is wrong")
 
         if source.split('.')[-1] in IMG_FORMATS:
-            return [{'data': [source, cv2.imread(source)], 'fps': None, "type": "frame"}]
+            return {'data': [source, cv2.cvtColor(cv2.imread(source), cv2.COLOR_BGR2RGB)], 'fps': None, "type": "frame"}
         
         else:
-            DataLoaders = []
 
-            _dataset = tracking_dataset(source)
+            _dataset = TrackingDataset(source)
             fps = _dataset.fps
             _dataloader = DataLoader(_dataset, batch_size=1, shuffle=False, num_workers=4, collate_fn=Collator())
-            DataLoaders.append({"data": _dataloader, 'fps': fps, "type": "frame"})
+            DataLoaders = {"data": _dataloader, 'fps': fps, "type": "video"}
 
 
             return DataLoaders
@@ -68,7 +74,7 @@ def load_validation_dataloader(source):
     DataLoaders = []
 
     for video in lst_videos:
-        _dataset = validation_dataset(os.path.join(source, "data", video), os.path.join(os.path.join(source, "labels", video)))
+        _dataset = ValidationDataset(os.path.join(source, "data", video), os.path.join(os.path.join(source, "labels", video)))
         fps = _dataset.fps
         _dataloader = DataLoader(_dataset, batch_size=1, shuffle=False, num_workers=4, collate_fn=Collator())
         DataLoaders.append({"data": _dataloader, 'fps': fps})

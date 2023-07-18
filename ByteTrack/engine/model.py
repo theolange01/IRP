@@ -11,14 +11,15 @@ import cv2
 
 from ByteTrack.utils import LOGGER, colorstr, check_yaml
 from ByteTrack.model.MotionDetector import MotionDetector
-from ByteTrack.data import load_track_dataset, load_validation_dataset
-from ByteTrack.utils import Annotator, IterableSimpleNamespace, yaml_load
+from ByteTrack.data import load_track_dataloader, load_validation_dataloader
+from ByteTrack.utils import IterableSimpleNamespace, yaml_load
+from ByteTrack.utils.Annotator import Annotator
 from ByteTrack.tracker import BOTSORT, BYTETracker
 from ..eval.eval import evaluate
 from ..eval import CLEAR, Count, HOTA
 
 from ultralytics import YOLO
-from ultralytics.yolo.engine.results import Results
+from ultralytics.engine.results import Results
 
 TRACKER_MAP = {'bytetrack': BYTETracker, 'botsort': BOTSORT}
 
@@ -34,6 +35,7 @@ class Tracker:
         self.Annotator = Annotator(CLASS_NAMES_DICT=self.CLASS_NAMES_DICT)
 
         self.save_dir = "runs/track"
+        self._save_dir = self.save_dir
         self.nb_frame = 0
 
     def reset_tracker(self):
@@ -55,14 +57,14 @@ class Tracker:
 
         self.YOLO.train(data=data, **kwargs)
     
-    def __call__(self, source, tracker, persist=False, save_video=True, video="tracking_results.avi", fps=25, save_text=False, save_frame=False, use_yolo=True, use_motion_detector=False, iou_merge=0.7, **kwargs):
-        return self.track(source=source, tracker=tracker, persist=persist, save_video=save_video, video=video, fps=fps, save_text=save_text, save_frame=save_frame, use_yolo=use_yolo, use_motion_detector=use_motion_detector, iou_merge=iou_merge, **kwargs)
+    def __call__(self, source, tracker, persist=False, save_video=True, video="tracking_results.avi", fps=None, save_txt=False, save_frame=False, use_yolo=True, use_motion_detector=False, iou_merge=0.7, verbose=False, **kwargs):
+        return self.track(source=source, tracker=tracker, persist=persist, save_video=save_video, video=video, fps=fps, save_txt=save_txt, save_frame=save_frame, use_yolo=use_yolo, use_motion_detector=use_motion_detector, iou_merge=iou_merge, verbose=verbose, **kwargs)
 
-    def track(self, source, tracker, persist=False, save_video=False, video="tracking_results.avi", fps=25, save_text=False, save_frame=False, use_yolo=True, use_motion_detector=False, iou_merge=0.7, **kwargs):
+    def track(self, source, tracker, persist=False, save_video=False, video="tracking_results.avi", fps=None, save_txt=False, save_frame=False, use_yolo=True, use_motion_detector=False, iou_merge=0.7, verbose=False, **kwargs):
         if not (use_yolo or use_motion_detector):
             raise Exception("At least one detection method should be selected.")
         
-        source = load_track_dataset(source)
+        source = load_track_dataloader(source)
         """
         Dict[str]
         data: dataloader (shuffle=False): path of img "image0.jpg" by default, frame
@@ -81,37 +83,39 @@ class Tracker:
         if not persist:
             self.nb_frame = 0
             i = 1
-            save_dir = self.save_dir
-            while os.path.exists(save_dir):
-                save_dir = self.save_dir + str(i)
+            self._save_dir = self.save_dir
+            while os.path.exists(self._save_dir):
+                self._save_dir = self.save_dir + str(i)
                 i += 1
         
-        self.register_tracker(source['data'], persist, tracker)
-        verbose = 'verbose' in kwargs.keys()
+        self.register_tracker(1, persist, tracker)
+        kwargs.pop('save', None)
                 
         ts = perf_counter()
         if use_motion_detector == False:
             ts = perf_counter()
-            for _, frame in source['data']:
+            for index, (path, frame) in enumerate(source['data']):
                 ts_i = perf_counter()
-                result = self.YOLO(frame, save_txt=False, save=False, verbose=False, **kwargs)
+                result = self.YOLO(frame, verbose=False, **kwargs)
 
-                self.update_tracker(self, result, [frame], source['data'].batch_size)
+                LOGGER.info('')
+                self.update_tracker(result, [frame], 1, fps)
+                LOGGER.info('')
                 te_i = perf_counter()
 
                 frame = self.Annotator(frame, result[0])
                 self.frame_memory.append(frame)
 
                 if save_video:
-                    os.makedirs(save_dir, exist_ok=True)
-                    self.write_video(frame, result, persist, video, fps, save_dir)
+                    os.makedirs(self._save_dir, exist_ok=True)
+                    self.write_video([frame], persist, video, fps, self._save_dir)
 
                 if verbose:
                     text = ""
                     for c in result[0].boxes.cls.unique():
                         n = (result[0].boxes.cls == c).sum()  # detections per class
                         text += f"{n} {self.CLASS_NAMES_DICT[int(c)]}{'s' * (n > 1)}, "
-                    LOGGER.info(f"image {index}/{len(source['data'])} {path}: {frame.shape[0]}x{frame.shape[1]} {text}{(te_i - ts_i)/1000:.1f}ms")
+                    LOGGER.info(f"image {index+1}/{len(source['data'])} {path if path else 'image0.jpg'}: {frame.shape[0]}x{frame.shape[1]} {text}{(te_i - ts_i)/1000:.1f}ms")
 
 
                 results.append(result[0])
@@ -131,7 +135,7 @@ class Tracker:
 
                     result = self.merge_detection(result, motion_result, [frame], paths= [path], iou=iou_merge)
                 
-                self.update_tracker(self, result, [frame], source['data'].batch_size)
+                self.update_tracker(result, [frame], 1, fps)
                 te_i = perf_counter()
 
                 results.append(result[0])
@@ -141,15 +145,15 @@ class Tracker:
                 
 
                 if save_video:
-                        os.makedirs(save_dir, exist_ok=True)
-                        self.write_video(frame, result, persist, video, fps, save_dir)
+                        os.makedirs(self._save_dir, exist_ok=True)
+                        self.write_video([frame], persist, video, fps, self._save_dir)
 
                 if verbose:
                     text = ""
                     for c in result[0].boxes.cls.unique():
                         n = (result[0].boxes.cls == c).sum()  # detections per class
                         text += f"{n} {self.CLASS_NAMES_DICT[int(c)]}{'s' * (n > 1)}, "
-                    LOGGER.info(f"image {index}/{len(source['data'])} {path}: {frame.shape[0]}x{frame.shape[1]} {text}{(te_i - ts_i)/1000:.1f}ms")
+                    LOGGER.info(f"image {index+1}/{len(source['data'])} {path if path else 'image0.jpg'}: {frame.shape[0]}x{frame.shape[1]} {text}{(te_i - ts_i)/1000:.1f}ms")
 
 
         te = perf_counter()
@@ -157,19 +161,27 @@ class Tracker:
         if source['type'] == "video":
                 LOGGER.info(f"Tracking Complete. Frame processing Rate: {int(len(source['data'].dataset)/(te-ts))} frame/seconds")
 
-        if save_text:
-                os.makedirs(save_dir, exist_ok=True)
-                self.save_txt(results, os.path.join(save_dir, 'labels'))
+        if save_txt:
+            os.makedirs(self._save_dir, exist_ok=True)
+            os.makedirs(self._save_dir + "/" +  'labels', exist_ok=True)
+            self.save_txt(results, self._save_dir + "/" +  'labels')
             
         if save_frame:
-            os.makedirs(save_dir, exist_ok=True)
-            self.save_frame(self.frame_memory[-len(source['data']):], os.path.join(save_dir, 'frames'))
+            os.makedirs(self._save_dir, exist_ok=True)
+            os.makedirs(self._save_dir + "/" +  'frames', exist_ok=True)
+            self.save_frame(self.frame_memory[-len(source['data']):], self._save_dir + "/" +  'frames')
+        
+        if verbose and (save_frame or save_txt or save_video):
+            LOGGER.info(f"Results saved at {self._save_dir}")
 
         self.nb_frame += len(results)
 
+        if source['type'] == 'video':
+            self.VideoWriter.release()
+
         return results, self.frame_memory[-len(source['data']):]
 
-    def predict(self, source, save_text=False, save_frame=False, use_yolo=True, use_motion_detector = False, use_feat_filtering = False, iou_merge = 0.7, **kwargs):
+    def predict(self, source, save_txt=False, save_frame=False, use_yolo=True, use_motion_detector = False, use_feat_filtering = False, iou_merge = 0.7, verbose=False, **kwargs):
         if not (use_yolo or use_motion_detector):
             raise Exception("At least one detection method should be selected.")
         
@@ -181,16 +193,17 @@ class Tracker:
             i += 1
 
         save_dir = _save_dir
+        kwargs.pop("save", None)
         
         results=None
         if not use_motion_detector:
-            results = self.YOLO(source, save=False, save_txt=False, **kwargs)
+            results = self.YOLO(source, verbose=False, **kwargs)
 
             return results
 
         motion_results=None
         if use_yolo:
-            results = self.YOLO(source, verbose=False, save=False, save_txt=False, **kwargs)
+            results = self.YOLO(source, verbose=False, **kwargs)
             if use_feat_filtering:
                 motion_results = self.motion_detector(source, [result.boxes.xyxy.to(torch.device('cpu')).numpy() for result in results])
             else:
@@ -202,7 +215,7 @@ class Tracker:
         results = self.merge_detection(results, motion_results, source, iou=iou_merge)
 
         """
-        if save_text:
+        if save_txt:
                 os.makedirs(save_dir, exist_ok=True)
                 self.save_txt(results, os.path.join(save_dir, 'labels'))
         
@@ -211,7 +224,6 @@ class Tracker:
             self.save_frame(self.frame_memory[-len(source['data']):], os.path.join(save_dir, 'frames'))
 
         
-        verbose = 'verbose' in kwargs.keys()
         if verbose:
             for index, result in enumerate(results):
                 path = result.path
@@ -232,13 +244,16 @@ class Tracker:
         text = f'{"YOLO + MotionDetector" if (use_yolo and use_motion_detector) else "YOLO" if (use_yolo) else "MotionDetector"} + {tracker.split(".")[0].upper()} Tracker:'
         LOGGER.info(f"{colorstr(text)} Tracker Validation")
 
-        source = load_validation_dataset(source)
+        source = load_validation_dataloader(source)
         """
         source : List(Dict[str, ]):
             - dataloader (batch_size=1, shuffle=False): Give all the images for inference in the right order and the targets, image_path
             - fps : The fps of the video
         
         """
+        kwargs.pop('save', None)
+        kwargs.pop('save_txt', None)
+        kwargs.pop('verbose', None)
 
         total_metrics = []
         speed = []
@@ -262,7 +277,7 @@ class Tracker:
                 
             else:
                 
-                self.register_tracker(data, False, tracker)
+                self.register_tracker(data.batch_size, False, tracker)
 
                 paths = []
 
@@ -280,7 +295,7 @@ class Tracker:
 
                         result = self.merge_detection(result, motion_result, [frame], path = [path], iou=iou_merge)
                     
-                    self.update_tracker(self, result, [frame], data.batch_size)
+                    self.update_tracker(result, [frame], data.batch_size,  video['fps'])
 
                     results.append(result[0])
 
@@ -339,60 +354,60 @@ class Tracker:
         else:
             device = results[0].boxes.xyxy.device
             for index in range(len(results)):
-                height, width = results[index].boxes.orig_shape
-                box1 = results[index].boxes.xyxy.to(torch.device('cpu')).numpy()
-                box2 = motion_results[index]
+                if len(motion_results[index]):
+                    height, width = results[index].boxes.orig_shape
+                    box1 = results[index].boxes.xyxy.to(torch.device('cpu')).numpy()
+                    box2 = motion_results[index]
 
-                iou_matrix = self.bbox_ious(box1, box2)
+                    iou_matrix = self.bbox_ious(box1, box2)
 
-                matched_detections_index = np.any(iou_matrix>iou, axis=1)
-                remaining_detections_index = np.logical_not(matched_detections_index)
+                    matched_detections_index = np.any(iou_matrix>iou, axis=1)
+                    remaining_detections_index = np.logical_not(matched_detections_index)
 
-                remaining_detections = torch.tensor(box2[remaining_detections_index].reshape(-1, 4), device = device)
+                    remaining_detections = torch.tensor(box2[remaining_detections_index].reshape(-1, 4), device = device)
 
-                results[index].boxes.xyxy = torch.cat((results[index].boxes.xyxy, remaining_detections))
-                results[index].boxes.xyxyn = torch.cat((results[index].boxes.xyxyn, remaining_detections/np.array([width, height, width, height])))
+                    results[index].boxes.xyxy = torch.cat((results[index].boxes.xyxy, remaining_detections))
+                    results[index].boxes.xyxyn = torch.cat((results[index].boxes.xyxyn, remaining_detections/np.array([width, height, width, height])))
 
-                remaining_detections[:, 0], remaining_detections[:,1], remaining_detections[:,2], remaining_detections[:,3] = (remaining_detections[:,0] + remaining_detections[:,2])/2,  (remaining_detections[:,1] + remaining_detections[:,3])/2, remaining_detections[:,2] - remaining_detections[:,0], remaining_detections[:,3] - remaining_detections[:,1]
+                    remaining_detections[:, 0], remaining_detections[:,1], remaining_detections[:,2], remaining_detections[:,3] = (remaining_detections[:,0] + remaining_detections[:,2])/2,  (remaining_detections[:,1] + remaining_detections[:,3])/2, remaining_detections[:,2] - remaining_detections[:,0], remaining_detections[:,3] - remaining_detections[:,1]
 
-                results[index].boxes.xywh = torch.cat((results[index].boxes.xyxy, remaining_detections))
-                results[index].boxes.xywhn = torch.cat((results[index].boxes.xyxyn, remaining_detections/np.array([width, height, width, height])))
+                    results[index].boxes.xywh = torch.cat((results[index].boxes.xyxy, remaining_detections))
+                    results[index].boxes.xywhn = torch.cat((results[index].boxes.xyxyn, remaining_detections/np.array([width, height, width, height])))
 
-                results[index].boxes.conf = torch.cat((results[index].boxes.conf, torch.tensor([0.8 for _ in range(len(remaining_detections))], device=device)))
-                results[index].boxes.cls = torch.cat((results[index].boxes.cls, torch.tensor([len(self.CLASS_NAMES_DICT)-1 for _ in range(len(remaining_detections))], device=device)))
+                    results[index].boxes.conf = torch.cat((results[index].boxes.conf, torch.tensor([0.8 for _ in range(len(remaining_detections))], device=device)))
+                    results[index].boxes.cls = torch.cat((results[index].boxes.cls, torch.tensor([len(self.CLASS_NAMES_DICT)-1 for _ in range(len(remaining_detections))], device=device)))
 
         return results
 
 
-    def write_video(self, frame, results, persist, video, fps, save_video, save_dir):
+    def write_video(self, frames, persist, video, fps, save_dir):
         if persist:
-            for result in results:
-                frame = result.orig_img
+            if not self.VideoWriter:
+                if fps:
+                    height, width = frames[0].shape[:2]
+                    VIDEO_CODEC = "MJPG"
+                    self.VideoWriter = cv2.VideoWriter(os.path.join(save_dir, video), cv2.VideoWriter_fourcc(*VIDEO_CODEC), fps, (width, height))
 
-                frame = self.Annotator([frame], [result])
-                self.frame_memory.append(frame)
-                if save_video:
-                    if self.VideoWriter:
-                        self.VideoWriter.write(frame)
-                    else:
-                        height, width = results[0].boxes.orig_shape
-                        VIDEO_CODEC = "MJPG"
-                        self.VideoWriter = cv2.VideoWriter(os.path.join(save_dir, video), cv2.VideoWriter_fourcc(*VIDEO_CODEC), fps, (width, height))
+                else:
+                    LOGGER.warning("WARNING ⚠️: FPS not given, cannot save the tracking video result")
+                    return None
 
-                        self.VideoWriter.write(frame)
+
+            for frame in frames:
+                self.VideoWriter.write(frame)
 
         else:
-            if save_video:
-                height, width = results[0].boxes.orig_shape
+            if fps:
+                height, width = frames[0].shape[:2]
                 VIDEO_CODEC = "MJPG"
                 self.VideoWriter = cv2.VideoWriter(video, cv2.VideoWriter_fourcc(*VIDEO_CODEC), fps, (width, height))
+            else:
+                LOGGER.warning("WARNING ⚠️: FPS not given, cannot save the tracking video result")
+                self.VideoWriter = None
+                return None
 
-            for result in results:
-                frame = result.orig_img
-
-                frame = self.Annotator([frame], [result])
-                self.frame_memory.append(frame)
-                if save_video:
+            for frame in frames:
+                if self.VideoWriter:
                     self.VideoWriter.write(frame)
 
 
@@ -429,14 +444,14 @@ class Tracker:
         return inter_area / (box2_area + box1_area[:, None] - inter_area + eps)
 
 
-    def register_tracker(self, source, persist, tracker):
+    def register_tracker(self, batch_size, persist, tracker):
         if not hasattr(self, 'trackers'):
             tracker = check_yaml(tracker)
             cfg = IterableSimpleNamespace(**yaml_load(tracker))
             assert cfg.tracker_type in ['bytetrack', 'botsort'], \
                 f"Only support 'bytetrack' and 'botsort' for now, but got '{cfg.tracker_type}'"
             trackers = []
-            for _ in range(source['data'].batch_size):
+            for _ in range(batch_size):
                 tracker = TRACKER_MAP[cfg.tracker_type](args=cfg, frame_rate=30)
                 trackers.append(tracker)
             
@@ -450,19 +465,19 @@ class Tracker:
                 assert cfg.tracker_type in ['bytetrack', 'botsort'], \
                     f"Only support 'bytetrack' and 'botsort' for now, but got '{cfg.tracker_type}'"
                 trackers = []
-                for _ in range(source['data'].batch_size):
+                for _ in range(batch_size):
                     tracker = TRACKER_MAP[cfg.tracker_type](args=cfg, frame_rate=30)
                     trackers.append(tracker)
                 
                 self.trackers = trackers
     
 
-    def update_tracker(self, results, frames, batch_size):
+    def update_tracker(self, results, frames, batch_size, fps=None):
         for i in range(batch_size):
             det = results[i].boxes.to(torch.device('cpu')).numpy()
             if len(det) == 0:
                 continue
-            tracks = self.trackers[i].update(det, frames[i], len(self.CLASS_NAMES_DICT)-1)
+            tracks = self.trackers[i].update(det, frames[i], len(self.CLASS_NAMES_DICT)-1, fps)
             if len(tracks) == 0:
                 continue
             idx = tracks[:, -1].astype(int)
@@ -480,14 +495,10 @@ class Tracker:
                 line += (conf, ) * True + (() if id is None else (id, ))
                 texts.append(('%g ' * len(line)).rstrip() % line)
 
-            with open(os.path.join(txt_file, f"{'0'+(6-len(str(self.nb_frame+index))) + str(self.nb_frame+index)}.txt"), 'a') as f:
+            with open(os.path.join(txt_file, f"{'0'*(6-len(str(self.nb_frame+index+1))) + str(self.nb_frame+index+1)}.txt"), 'a') as f:
                 f.writelines(text + '\n' for text in texts)
-        
-        LOGGER.info(f"Labels saved at {txt_file}")
     
     def save_frame(self, frames, frame_dir):
         for index, frame in enumerate(frames):
-            cv2.imwrite(os.path.join(frame_dir, f"{'0'+(6-len(str(self.nb_frame+index))) + str(self.nb_frame+index)}.jpg"), frame)
-        
-        LOGGER.info(f"Frames saved at {frame_dir}")
+            cv2.imwrite(os.path.join(frame_dir, f"{'0'*(6-len(str(self.nb_frame+index+1))) + str(self.nb_frame+index+1)}.jpg"), frame)
 

@@ -187,7 +187,7 @@ class BYTETracker:
         self.kalman_filter = self.get_kalmanfilter()
         self.reset_id()
 
-    def update(self, results, filter_cls = None, img=None, fps=None):
+    def update(self, results, img=None, filter_cls = None, fps=None):
         """Updates object tracker with new detections and returns tracked object bounding boxes."""
         self.frame_id += 1
         activated_stracks = []
@@ -199,13 +199,15 @@ class BYTETracker:
         scores = results.conf
         bboxes = results.xyxy
         # Add index
+        # print(len(bboxes))
         bboxes = np.concatenate([bboxes, np.arange(len(bboxes)).reshape(-1, 1)], axis=-1)
+        # print(bboxes[:, -1])
         cls = results.cls
 
         if filter_cls:
-            remain_inds = scores > self.args.track_high_thresh and cls != filter_cls
-            inds_low = scores > self.args.track_low_thresh and cls != filter_cls
-            inds_high = scores < self.args.track_high_thresh and cls != filter_cls
+            remain_inds = (scores > self.args.track_high_thresh) & (cls != filter_cls)
+            inds_low = (scores > self.args.track_low_thresh) & (cls != filter_cls)
+            inds_high = (scores < self.args.track_high_thresh) & (cls != filter_cls)
             filter_index = cls == filter_cls
         
         else:
@@ -273,11 +275,23 @@ class BYTETracker:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refined_stracks.append(track)
 
+        print(len(u_track))
+        print(len(activated_stracks))
+        print(len(refined_stracks))
+        
         # Step 4: Process detections that need to be filtered
+        
         detections_filter = self.init_track(dets_filter, scores_filter, cls_filter, img)
+        print(len(detections_filter))
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
+        
         dists = matching.iou_distance(r_tracked_stracks, detections_filter)
+        
         matches, u_track, u_detection_filter = matching.linear_assignment(dists, thresh=0.7)
+        print(matches)
+
+        """
+        
         for itracked, idet in matches:
             track = r_tracked_stracks[itracked]
             det = detections_filter[idet]
@@ -287,7 +301,11 @@ class BYTETracker:
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refined_stracks.append(track)
+        """
 
+        print(len(u_track))
+        print(len(activated_stracks))
+        print(len(refined_stracks))
 
         for it in u_track:
             track = r_tracked_stracks[it]
@@ -295,6 +313,7 @@ class BYTETracker:
                 track.mark_lost()
                 lost_stracks.append(track)
 
+        """
         # Match the remaining detections that require filtering with the motion_history list.
         # When there at least 5 frames of history, determine speed, direction and initialise track depending on results
         # If less than 5 frame, update motion_history
@@ -306,11 +325,10 @@ class BYTETracker:
             warp = self.gmc.apply(img, dets_filter)
             STrack.multi_gmc(ftrack_pool, warp)
 
-        filter_stracks = [ftrack_pool[i] for i in u_track if ftrack_pool[i].state == TrackState.Tracked]
-        dists = matching.iou_distance(filter_stracks, u_detection_filter)
+        dists = matching.iou_distance(ftrack_pool, u_detection_filter)
         matches, _, u_detection_filter = matching.linear_assignment(dists, thresh=0.5)
         for itracked, idet in matches:
-            track = filter_stracks[itracked]
+            track = ftrack_pool[itracked]
             det = u_detection_filter[idet]
             if track.tracklet_len <= self.args.frame_filter:
                 track.update(det, self.frame_id)
@@ -343,7 +361,7 @@ class BYTETracker:
                         continue
                 
                 filtered_stracks.append(track)
-
+        """
     
 
         # Deal with unconfirmed tracks, usually tracks with only one beginning frame
@@ -364,16 +382,13 @@ class BYTETracker:
             if track.score < self.args.new_track_thresh:
                 continue
             track.activate(self.kalman_filter, self.frame_id)
-            activated_stracks.append(track)    
-
-        detections = [detections[i] for i in u_detection_second]
-        for inew in u_detection_second:
-            track = detections[inew]
-            if track.score < self.args.new_track_thresh:
-                continue
+            activated_stracks.append(track)
+        """
+        for inew in u_detection_filter:   
+            track = u_detection_filter[inew]
             track.activate(self.kalman_filter, self.frame_id)
-            activated_stracks.append(track)    
-
+            filtered_stracks.append(track)  
+        """
         # Step 6: Update state
         for track in self.lost_stracks:
             if self.frame_id - track.end_frame > self.max_time_lost:
@@ -391,6 +406,11 @@ class BYTETracker:
         self.filtered_stracks = filtered_stracks
         if len(self.removed_stracks) > 1000:
             self.removed_stracks = self.removed_stracks[-999:]  # clip remove stracks to 1000 maximum
+
+        print([x.idx for x in activated_stracks if x.is_activated])
+        print([x.idx for x in refined_stracks if x.is_activated])
+        # print([x.idx for x in self.tracked_stracks if x.is_activated])
+        
         return np.asarray(
             [x.tlbr.tolist() + [x.track_id, x.score, x.cls, x.idx] for x in self.tracked_stracks if x.is_activated],
             dtype=np.float32)
@@ -514,3 +534,5 @@ class BYTETracker:
             velocity.append(distance.euclidean(positions[-1][:2], positions[-2][:2]))
 
         return {'Curvature': np.mean(curvature), 'Smoothness': np.mean(smoothness), "Dir_changes": num_changes, "Velocity": np.mean(velocity) if fps else None}
+
+

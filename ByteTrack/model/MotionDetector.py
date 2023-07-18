@@ -53,11 +53,13 @@ class MotionDetector:
                 # If not frames are stored in memory, the algorithm can't find the moving objects
                 # Save the frame in memory and return an empty list
                 self.memory = lst_frames
-                self.height, self.width  = self.memory.shape[:2]
+                self.height, self.width  = lst_frames[0].shape[:2]
 
                 dim = (self.width*2, self.height*2)
 
-                frame = cv2.resize(self.memory, dim, interpolation = cv2.INTER_AREA)
+                frame = cv2.resize(lst_frames[0], dim, interpolation = cv2.INTER_AREA)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                frame = cv2.GaussianBlur(frame, (5, 5), cv2.BORDER_DEFAULT)
 
                 _ = self.backsub.apply(frame)
                 return [[]]
@@ -65,12 +67,14 @@ class MotionDetector:
         else:
             if not self.memory:
                 # When a list of frames is given, use the first one to initialise the detector
-                self.memory = lst_frames
-                self.height, self.width  = self.memory.shape[:2]
+                self.memory = [lst_frames[0]]
+                self.height, self.width  = lst_frames[0].shape[:2]
 
                 dim = (self.width*2, self.height*2)
 
                 frame = cv2.resize(self.memory, dim, interpolation = cv2.INTER_AREA)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                frame = cv2.GaussianBlur(frame, (5, 5), cv2.BORDER_DEFAULT)
 
                 _ = self.backsub.apply(frame)
 
@@ -83,7 +87,7 @@ class MotionDetector:
 
             curr_frame = cv2.resize(frame, dim, interpolation = cv2.INTER_AREA)
 
-            curr_frame_gray = cv2.cvtColor(curr_frame, cv2.COLOR_RGB2GRAY)
+            curr_frame_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
             curr_frame_gray = cv2.GaussianBlur(curr_frame_gray, (5, 5), cv2.BORDER_DEFAULT)
 
             fgmask = self.backsub.apply(curr_frame_gray)
@@ -103,7 +107,7 @@ class MotionDetector:
 
             proposals.append(proposal)
         
-        self.memory = lst_frames[-1]
+        self.memory.extend(lst_frames)
 
         return proposals
 
@@ -119,7 +123,11 @@ class MotionDetector:
                 return self.read_frames(source)
             
         elif isinstance(source, (list, tuple)):
-            if isinstance(source[0], np.array):
+            if isinstance(source[0], np.ndarray):
+                try:
+                    source = [cv2.cvtColor(image, cv2.COLOR_RGB2BGR) for image in source]
+                except:
+                    pass
                 return source
             elif isinstance(source[0], Image):
                 return [cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR) for image in source]
