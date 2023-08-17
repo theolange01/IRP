@@ -1,3 +1,5 @@
+# IRP ByteTracker
+# Copied from https://github.com/JonathonLuiten/TrackEval
 
 import numpy as np
 from abc import ABC, abstractmethod
@@ -29,14 +31,6 @@ class _BaseMetric(ABC):
 
     @abstractmethod
     def combine_sequences(self, all_res):
-        ...
-
-    @abstractmethod
-    def combine_classes_class_averaged(self, all_res, ignore_empty_classes=False):
-        ...
-
-    @ abstractmethod
-    def combine_classes_det_averaged(self, all_res):
         ...
 
     def plot_single_tracker_results(self, all_res, tracker, output_folder, cls):
@@ -95,7 +89,7 @@ class _BaseMetric(ABC):
         """Prints results in an evenly spaced rows, with more space in first row"""
         if len(argv) == 1:
             argv = argv[0]
-        to_print = '%-35s' % argv[0]
+        to_print = '%-25s' % argv[0]
         for v in argv[1:]:
             to_print += '%-10s' % str(v)
         LOGGER.info(to_print)

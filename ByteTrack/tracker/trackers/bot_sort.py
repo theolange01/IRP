@@ -1,4 +1,5 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+# IRP ByteTracker
+# Copied from Ultralytics YOLO 🚀, AGPL-3.0 license: https://github.com/ultralytics/ultralytics
 
 from collections import deque
 

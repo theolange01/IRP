@@ -1,3 +1,6 @@
+# IRP ByteTracker
+# Inspired by Ultralytics https://github.com/ultralytics/ultralytics/tree/main
+
 import logging.config
 import os
 import platform

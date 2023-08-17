@@ -1,3 +1,6 @@
+# IRP ByteTracker
+# Copied from https://github.com/JonathonLuiten/TrackEval
+
 from functools import wraps
 from time import perf_counter
 import inspect

@@ -1,3 +1,5 @@
+# IRP ByteTracker
+# Copied from https://github.com/JonathonLuiten/TrackEval
 
 import os
 import numpy as np
@@ -7,11 +9,12 @@ from . import _timing
 
 
 class HOTA(_BaseMetric):
-    """Class which implements the HOTA metrics.
+    """
+    Class which implements the HOTA metrics.
     See: https://link.springer.com/article/10.1007/s11263-020-01375-2
     """
 
-    def __init__(self, config=None):
+    def __init__(self):
         super().__init__()
         self.plottable = True
         self.array_labels = np.arange(0.05, 0.99, 0.05)
@@ -53,16 +56,26 @@ class HOTA(_BaseMetric):
         for t, (gt_ids_t, tracker_ids_t) in enumerate(zip(data['gt_ids'], data['tracker_ids'])):
             # Count the potential matches between ids in each timestep
             # These are normalised, weighted by the match similarity.
-            similarity = data['similarity_scores'][t]
-            sim_iou_denom = similarity.sum(0)[np.newaxis, :] + similarity.sum(1)[:, np.newaxis] - similarity
-            sim_iou = np.zeros_like(similarity)
-            sim_iou_mask = sim_iou_denom > 0 + np.finfo('float').eps
-            sim_iou[sim_iou_mask] = similarity[sim_iou_mask] / sim_iou_denom[sim_iou_mask]
-            potential_matches_count[gt_ids_t[:, np.newaxis], tracker_ids_t[np.newaxis, :]] += sim_iou
+
+            # Update the value of the tracking ID given the unique tracking ID
+            # Some value are not present in the results, resulting in errors otherwise
+            tracker_ids_t = np.array([np.where(data['unique_tracker_ids']==id)[0][0] for id in tracker_ids_t])
+
+            # If there are any objects tracked in the frame t
+            if len(tracker_ids_t):
+                similarity = data['similarity_scores'][t]
+                sim_iou_denom = similarity.sum(0)[np.newaxis, :] + similarity.sum(1)[:, np.newaxis] - similarity
+                sim_iou = np.zeros_like(similarity)
+                sim_iou_mask = sim_iou_denom > 0 + np.finfo('float').eps
+                sim_iou[sim_iou_mask] = similarity[sim_iou_mask] / sim_iou_denom[sim_iou_mask]
+                potential_matches_count[gt_ids_t[:, np.newaxis], tracker_ids_t[np.newaxis, :]] += sim_iou
 
             # Calculate the total number of dets for each gt_id and tracker_id.
             gt_id_count[gt_ids_t] += 1
-            tracker_id_count[0, tracker_ids_t] += 1
+
+            # If there are any objects tracked in the frame t
+            if len(tracker_ids_t):
+                tracker_id_count[0, tracker_ids_t] += 1
 
         # Calculate overall jaccard alignment score (before unique matching) between IDs
         global_alignment_score = potential_matches_count / (gt_id_count + tracker_id_count - potential_matches_count)
@@ -79,6 +92,10 @@ class HOTA(_BaseMetric):
                 for a, alpha in enumerate(self.array_labels):
                     res['HOTA_FN'][a] += len(gt_ids_t)
                 continue
+
+            # Update the value of the tracking ID given the unique tracking ID
+            # Some value are not present in the results, resulting in errors otherwise
+            tracker_ids_t = np.array([np.where(data['unique_tracker_ids']==id)[0][0] for id in tracker_ids_t])
 
             # Get matching scores between pairs of dets for optimizing HOTA
             similarity = data['similarity_scores'][t]
@@ -128,42 +145,6 @@ class HOTA(_BaseMetric):
         res = self._compute_final_fields(res)
         return res
 
-    def combine_classes_class_averaged(self, all_res, ignore_empty_classes=False):
-        """Combines metrics across all classes by averaging over the class values.
-        If 'ignore_empty_classes' is True, then it only sums over classes with at least one gt or predicted detection.
-        """
-        res = {}
-        for field in self.integer_array_fields:
-            if ignore_empty_classes:
-                res[field] = self._combine_sum(
-                    {k: v for k, v in all_res.items()
-                     if (v['HOTA_TP'] + v['HOTA_FN'] + v['HOTA_FP'] > 0 + np.finfo('float').eps).any()}, field)
-            else:
-                res[field] = self._combine_sum({k: v for k, v in all_res.items()}, field)
-
-        for field in self.float_fields + self.float_array_fields:
-            if ignore_empty_classes:
-                res[field] = np.mean([v[field] for v in all_res.values() if
-                                      (v['HOTA_TP'] + v['HOTA_FN'] + v['HOTA_FP'] > 0 + np.finfo('float').eps).any()],
-                                     axis=0)
-            else:
-                res[field] = np.mean([v[field] for v in all_res.values()], axis=0)
-        return res
-
-    def combine_classes_det_averaged(self, all_res):
-        """Combines metrics across all classes by averaging over the detection values"""
-        
-        res = {}
-        for field in self.integer_array_fields:
-            res[field] = self._combine_sum(all_res, field)
-        for field in ['AssRe', 'AssPr', 'AssA']:
-            res[field] = self._combine_weighted_av(all_res, field, res, weight_field='HOTA_TP')
-        loca_weighted_sum = sum([all_res[k]['LocA'] * all_res[k]['HOTA_TP'] for k in all_res.keys()])
-        res['LocA'] = np.maximum(1e-10, loca_weighted_sum) / np.maximum(1e-10, res['HOTA_TP'])
-        res = self._compute_final_fields(res)
-        return res
-
-
     @staticmethod
     def _compute_final_fields(res):
         """Calculate sub-metric ('field') values which only depend on other sub-metric values.
@@ -201,4 +182,5 @@ class HOTA(_BaseMetric):
         os.makedirs(os.path.dirname(out_file), exist_ok=True)
         plt.savefig(out_file)
         plt.savefig(out_file.replace('.pdf', '.png'))
-        plt.clf()
+        plt.show()
+        plt.clf();

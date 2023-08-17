@@ -1,20 +1,10 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+# IRP ByteTracker
+# Copied from Ultralytics YOLO 🚀, AGPL-3.0 license: https://github.com/ultralytics/ultralytics
 
 import numpy as np
 import scipy
 from scipy.spatial.distance import cdist
-
-from .kalman_filter import chi2inv95
-
-try:
-    import lap  # for linear_assignment
-
-    assert lap.__version__  # verify package is not directory
-except (ImportError, AssertionError, AttributeError):
-    from ultralytics.yolo.utils.checks import check_requirements
-
-    check_requirements('lapx>=0.5.2')  # update to lap package from https://github.com/rathaROG/lapx
-    import lap
+import lap
 
 
 def merge_matches(m1, m2, shape):
@@ -34,17 +24,6 @@ def merge_matches(m1, m2, shape):
 
     return match, unmatched_O, unmatched_Q
 
-
-def _indices_to_matches(cost_matrix, indices, thresh):
-    """_indices_to_matches: Return matched and unmatched indices given a cost matrix, indices, and a threshold."""
-    matched_cost = cost_matrix[tuple(zip(*indices))]
-    matched_mask = (matched_cost <= thresh)
-
-    matches = indices[matched_mask]
-    unmatched_a = tuple(set(range(cost_matrix.shape[0])) - set(matches[:, 0]))
-    unmatched_b = tuple(set(range(cost_matrix.shape[1])) - set(matches[:, 1]))
-
-    return matches, unmatched_a, unmatched_b
 
 
 def linear_assignment(cost_matrix, thresh, use_lap=True):
@@ -143,46 +122,6 @@ def embedding_distance(tracks, detections, metric='cosine'):
     track_features = np.asarray([track.smooth_feat for track in tracks], dtype=np.float32)
     cost_matrix = np.maximum(0.0, cdist(track_features, det_features, metric))  # Normalized features
     return cost_matrix
-
-
-def gate_cost_matrix(kf, cost_matrix, tracks, detections, only_position=False):
-    """Apply gating to the cost matrix based on predicted tracks and detected objects."""
-    if cost_matrix.size == 0:
-        return cost_matrix
-    gating_dim = 2 if only_position else 4
-    gating_threshold = chi2inv95[gating_dim]
-    measurements = np.asarray([det.to_xyah() for det in detections])
-    for row, track in enumerate(tracks):
-        gating_distance = kf.gating_distance(track.mean, track.covariance, measurements, only_position)
-        cost_matrix[row, gating_distance > gating_threshold] = np.inf
-    return cost_matrix
-
-
-def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda_=0.98):
-    """Fuse motion between tracks and detections with gating and Kalman filtering."""
-    if cost_matrix.size == 0:
-        return cost_matrix
-    gating_dim = 2 if only_position else 4
-    gating_threshold = chi2inv95[gating_dim]
-    measurements = np.asarray([det.to_xyah() for det in detections])
-    for row, track in enumerate(tracks):
-        gating_distance = kf.gating_distance(track.mean, track.covariance, measurements, only_position, metric='maha')
-        cost_matrix[row, gating_distance > gating_threshold] = np.inf
-        cost_matrix[row] = lambda_ * cost_matrix[row] + (1 - lambda_) * gating_distance
-    return cost_matrix
-
-
-def fuse_iou(cost_matrix, tracks, detections):
-    """Fuses ReID and IoU similarity matrices to yield a cost matrix for object tracking."""
-    if cost_matrix.size == 0:
-        return cost_matrix
-    reid_sim = 1 - cost_matrix
-    iou_dist = iou_distance(tracks, detections)
-    iou_sim = 1 - iou_dist
-    fuse_sim = reid_sim * (1 + iou_sim) / 2
-    # det_scores = np.array([det.score for det in detections])
-    # det_scores = np.expand_dims(det_scores, axis=0).repeat(cost_matrix.shape[0], axis=0)
-    return 1 - fuse_sim  # fuse cost
 
 
 def fuse_score(cost_matrix, detections):

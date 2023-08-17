@@ -1,3 +1,5 @@
+# IRP ByteTracker
+# Copied from https://github.com/JonathonLuiten/TrackEval
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -5,7 +7,10 @@ from ._base_metric import _BaseMetric
 from . import _timing
 
 class CLEAR(_BaseMetric):
-    """Class which implements the CLEAR metrics"""
+    """
+    Class which implements the CLEAR metrics.
+    See: https://www.researchgate.net/publication/26523191_Evaluating_multiple_object_tracking_performance_The_CLEAR_MOT_metrics
+    """
 
     def __init__(self, threshold=0.5):
         super().__init__()
@@ -123,32 +128,6 @@ class CLEAR(_BaseMetric):
         res = self._compute_final_fields(res)
         return res
 
-    def combine_classes_det_averaged(self, all_res):
-        """Combines metrics across all classes by averaging over the detection values"""
-        res = {}
-        for field in self.summed_fields:
-            res[field] = self._combine_sum(all_res, field)
-        res = self._compute_final_fields(res)
-        return res
-
-    def combine_classes_class_averaged(self, all_res, ignore_empty_classes=False):
-        """Combines metrics across all classes by averaging over the class values.
-        If 'ignore_empty_classes' is True, then it only sums over classes with at least one gt or predicted detection.
-        """
-        res = {}
-        for field in self.integer_fields:
-            if ignore_empty_classes:
-                res[field] = self._combine_sum(
-                    {k: v for k, v in all_res.items() if v['CLR_TP'] + v['CLR_FN'] + v['CLR_FP'] > 0}, field)
-            else:
-                res[field] = self._combine_sum({k: v for k, v in all_res.items()}, field)
-        for field in self.float_fields:
-            if ignore_empty_classes:
-                res[field] = np.mean(
-                    [v[field] for v in all_res.values() if v['CLR_TP'] + v['CLR_FN'] + v['CLR_FP'] > 0], axis=0)
-            else:
-                res[field] = np.mean([v[field] for v in all_res.values()], axis=0)
-        return res
 
     @staticmethod
     def _compute_final_fields(res):
