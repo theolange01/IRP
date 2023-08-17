@@ -1,6 +1,7 @@
-"""
-Implements the Generalized R-CNN for SiamMOT
-"""
+# IRP SiamMOT Tracker
+# Implements the Generalized R-CNN for SiamMOT
+# Adapted from https://github.com/amazon-science/siam-mot
+
 from typing import List, Tuple
 import os
 
@@ -26,9 +27,34 @@ class SiamMOT(nn.Module):
     - rpn
     - heads: takes the features + the proposals from the RPN and
              computes detections / tracks from it.
+
+    Args:
+        cfg (yacs.config.CfgNode): Default Model Configuration
+    
+    Attributes:
+        backbone (nn.Module): SiamMOT backbone Module
+        rpn (nn.Module): SiamMOT RPN module
+        roi_heads (nn.Module): SiamMOT Roi_Heads Module
+        track_memory (List): Tracking memory
+        transform_train (): Transformation to apply during tracking
+        transform_test (): Transformation to apply during testing
+        use_faster_rcnn (bool): Whether not use the PyTorch ResNet50 Faster R-CNN
+
+    Methods:
+        __init__(): Initialise the SiamMOT model
+        forward(): Perform a forward pass 
+        flush_memory(): Reset Tracking memory
+        reset_siammot_status(): Reset SiamMOT memory
     """
 
     def __init__(self, cfg):
+        """
+        Initialise the SiamMOT model.
+
+        Args:
+            cfg (yacs.config.CfgNode): Default Model Configuration
+        """
+        
         super(SiamMOT, self).__init__()
 
         self.transform_train = GeneralizedRCNNTransform(cfg.INPUT.MIN_SIZE_TRAIN, cfg.INPUT.MAX_SIZE_TRAIN,
@@ -39,6 +65,7 @@ class SiamMOT(nn.Module):
 
         self.use_faster_rcnn = cfg.MODEL.USE_FASTER_RCNN
 
+        # Whether to use the PyTorch ResNet50 Faster R-CNN
         if self.use_faster_rcnn:
             model = fasterrcnn_resnet50_fpn(weights='DEFAULT')
             self.backbone = model.backbone
@@ -57,6 +84,7 @@ class SiamMOT(nn.Module):
 
             del model
 
+            # Load the model's weights
             if os.path.exists(cfg.MODEL.BACKBONE.WEIGHT):
                 try:
                     self.backbone.load_state_dict(torch.load(cfg.MODEL.BACKBONE.WEIGHT, map_location=torch.device('cpu')))
@@ -85,6 +113,7 @@ class SiamMOT(nn.Module):
                         pass
 
         else:
+            # Use the Faster R-CNN given in cfg.
             self.backbone = build_backbone(cfg)
             self.rpn = build_rpn(cfg, self.backbone.out_channels)
             self.roi_heads = build_roi_heads(cfg, self.backbone.out_channels)
@@ -92,26 +121,30 @@ class SiamMOT(nn.Module):
         self.track_memory = None
 
     def flush_memory(self, cache=None):
+        """Reset Track memory."""
         self.track_memory = cache
 
     def reset_siammot_status(self):
+        """Reset SiamMOT Status."""
         self.flush_memory()
         self.roi_heads.reset_roi_status()
 
     def forward(self, images, targets=None, given_detection=None):
         """
-        images: a batch of pair of two images, each images in PIL format Tensor[3, height, width]
-        targets: list[Dict[str, Tensor]], containing:
-            - boxes (``FloatTensor[N, 4]``): the ground-truth boxes in ``[x1, y1, x2, y2]`` format, with
-            ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
-            - labels (``Int64Tensor[N]``): the class label for each ground-truth box
-        given_detection: (list of dictionary), containing:
-            - boxes (``FloatTensor[N, 4]``): the ground-truth boxes in ``[x1, y1, x2, y2]`` format, with
-            ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
-            - labels (``Int64Tensor[N]``): the class label for each ground-truth box
-            - confidence score
+        Perform a forward pass.
+
+        Args:
+            images (List[torch.Tensor]): a batch of pair of two images, each images in PIL format Tensor[3, height, width]
+            targets list[Dict[str, Tensor]]: contains:
+                - boxes (``FloatTensor[N, 4]``): the ground-truth boxes in ``[x1, y1, x2, y2]`` format, with
+                ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
+                - labels (``Int64Tensor[N]``): the class label for each ground-truth box
+            given_detection (list of dictionary): contains:
+                - boxes (``FloatTensor[N, 4]``): the ground-truth boxes in ``[x1, y1, x2, y2]`` format, with
+                ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
+                - labels (``Int64Tensor[N]``): the class label for each ground-truth box
+                - confidence score
         """
-        # todo: transform given_detection into List[BoxList] if that's not the case and not None.
 
         if self.training and targets is None:
             raise ValueError("In training mode, targets should be passed")
@@ -125,20 +158,23 @@ class SiamMOT(nn.Module):
             )
             original_image_sizes.append((val[0], val[1]))
 
+        # Apply the transformation to the input images
         if self.training:
             images, targets = self.transform_train(images, targets)
         else:
             images, targets = self.transform_test(images, targets)
 
+        # Obtain features map
         features = self.backbone(images.tensors)
 
+        # Apply the RPN on the features map
         if self.use_faster_rcnn:
             proposals, proposal_losses = self.rpn(images, features, targets)
         else:
             proposals, proposal_losses, objectness = self.rpn(images, features, targets)
         # proposals : List[Tensor[N,4]], proposal_losses: Dict[str, float]
 
-        # If given detection, update boxes position given the size of reshaped images
+        # Apply the roi_heads
         x, results, roi_losses = self.roi_heads(features,
                                                 proposals,
                                                 images.image_sizes,
@@ -146,9 +182,11 @@ class SiamMOT(nn.Module):
                                                 self.track_memory,
                                                 given_detection)
         
+        # Update the tracking memory
         if not self.training:
             self.flush_memory(cache=x)
 
+        # Change the format of the results
         tmp_results = []
         for result in results:
             tmp_results.append({'boxes': result.bbox, 
@@ -158,12 +196,13 @@ class SiamMOT(nn.Module):
         
         detections = tmp_results
 
+        # Postprocess detections
         if self.training:
             result = self.transform_train.postprocess(detections, images.image_sizes, original_image_sizes)
         else:
             result = self.transform_test.postprocess(detections, images.image_sizes, original_image_sizes)
 
-        if self.training or targets: # Get loss even during validation
+        if self.training: 
             losses = {}
             losses.update(roi_losses)
             losses.update(proposal_losses)
@@ -173,6 +212,8 @@ class SiamMOT(nn.Module):
 
 
 def build_siammot(cfg):
+    """Build the SiamMOT model."""
+
     siammot = SiamMOT(cfg)
     LOGGER.info(f"{cfg.MODEL.BACKBONE.CONV_BODY.upper()} backbone")
 

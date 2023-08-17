@@ -1,12 +1,11 @@
+# IRP SiamMOT Tracker
 # Copied from https://github.com/facebookresearch/maskrcnn-benchmark/blob/main/maskrcnn_benchmark/structures/boxlist_ops.py
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+
 import torch
-
-from siammot.structures.bounding_box import BoxList
-
 from torchvision.ops.boxes import batched_nms as nms
 
-from siammot.configs.default import cfg
+from siammot.structures.bounding_box import BoxList
 
 
 def boxlist_nms(boxlist, nms_thresh, max_proposals=-1, score_field="scores", label_field="labels"):
@@ -35,23 +34,6 @@ def boxlist_nms(boxlist, nms_thresh, max_proposals=-1, score_field="scores", lab
         keep = keep[: max_proposals]
     boxlist = boxlist[keep]
     return boxlist.convert(mode)
-
-
-def remove_small_boxes(boxlist, min_size):
-    """
-    Only keep boxes with both sides >= min_size
-
-    Arguments:
-        boxlist (Boxlist)
-        min_size (int)
-    """
-    # TODO maybe add an API for querying the ws / hs
-    xywh_boxes = boxlist.convert("xywh").bbox
-    _, _, ws, hs = xywh_boxes.unbind(dim=1)
-    keep = (
-        (ws >= min_size) & (hs >= min_size)
-    ).nonzero().squeeze(1)
-    return boxlist[keep]
 
 
 # implementation from https://github.com/kuangliu/torchcv/blob/master/torchcv/utils/box.py

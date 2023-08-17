@@ -1,12 +1,22 @@
+# IRP SiamMOT Tracker
+
 MODEL:
-  TRACK_ON: False
-  USE_FASTER_RCNN: True
+  USE_FASTER_RCNN: False
+  TRACK_ON: True
+  
+INPUT:
+  MIN_SIZE_TRAIN: 640
+  MAX_SIZE_TRAIN: 960
+  
+  BACKBONE: 
+    WEIGHT: "siammot/weight/DLA34_backbone.pt"
 
-#  BACKBONE: 
-#    WEIGHT: "siammot/weight/DLA34_BACKBONE.pt"
+  RPN: 
+    WEIGHT: "siammot/weight/RPN.pt"
 
-#  RPN: 
-#    WEIGHT: "siammot/weight/RPN.pt"
-
-#  ROI_BOX_HEAD: 
-#    WEIGHT: "siammot/weight/box_head.pt"
+  ROI_BOX_HEAD: 
+    WEIGHT: "siammot/weight/box_head.pt"
+    
+SOLVER:
+  BASE_LR: 0.5
+  CHECKPOINT_PERIOD: 1

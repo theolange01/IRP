@@ -1,5 +1,7 @@
+# IRP SiamMOT Tracker
 # Copied from https://github.com/facebookresearch/maskrcnn-benchmark/blob/main/maskrcnn_benchmark/structures/bounding_box.py
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+
 import torch
 
 

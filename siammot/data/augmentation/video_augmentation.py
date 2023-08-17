@@ -1,12 +1,12 @@
-from typing import Optional, Tuple, Dict
+# IRP SiamMOT Tracker
 
-from torch import Tensor
 import random
 from torchvision.transforms import functional as F
 from torchvision.transforms import ColorJitter as ImageColorJitter, GaussianBlur
 
 
 class SiamVideoBlur(GaussianBlur):
+    """Apply Gaussian Blur to a video clip."""
     def __init__(self,
                  kernel_size=3,
                  sigma=(0.1, 2.0)):
@@ -22,13 +22,14 @@ class SiamVideoBlur(GaussianBlur):
         new_video = []
         new_target = []
         for (image, image_target) in zip(video, target):
-            new_video.append(F.gaussian_blur(image, self.kernel_size, [sigma, sigma]))
+            new_video.append(F.gaussian_blur(image, self.kernel_size, [sigma, sigma])) # Apply the gaussian Blur to each frame of the clip
             new_target.append(image_target)
         
         return new_video, new_target
           
 
 class SiamVideoRandomHorizontalFlip(object):
+    """Apply a Random Horozontal Flip to a video clip."""
     def __init__(self, prob=0.5):
         self.prob = prob
 
@@ -42,15 +43,20 @@ class SiamVideoRandomHorizontalFlip(object):
         # All frames should have the same flipping operation
         if random.random() < self.prob:
             for (image, image_target) in zip(video, target):
+                _, height, width = image.shape
                 new_video.append(F.hflip(image))
-                new_target.append({"boxes": image_target["boxes"][:,[1,0,3,2]], "labels": image_target["labels"]})
+                box = image_target["boxes"]
+                box[:, 0], box[:, 2] = width - box[:, 2], width - box[:, 0]
+                new_target.append({"boxes": box, "labels": image_target["labels"]})
         else:
             new_video = video
             new_target = target
+        
         return new_video, new_target
 
 
 class SiamVideoColorJitter(ImageColorJitter):
+    """Apply a ColorJitter to a video clip."""
     def __init__(self,
                  brightness=None,
                  contrast=None,
@@ -71,6 +77,7 @@ class SiamVideoColorJitter(ImageColorJitter):
 
         new_video = []
         new_target = []
+        # Apply the same transformation to each frame of the video clip
         for i, (image, image_target) in enumerate(zip(video, target)):
             if i == idx:
                 for fn_id in fn_idx:

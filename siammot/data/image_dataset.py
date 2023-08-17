@@ -1,11 +1,10 @@
+# IRP SiamMOT Tracker 
+
 import os
-import time
 from glob import glob
-import itertools
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import cv2
 from PIL import Image
 
@@ -14,8 +13,39 @@ import torch.utils.data as data
 from torchvision.transforms.functional import to_tensor
 
 class ImageDataset(data.Dataset):
-    def __init__(self, data_path: str, label_path: str, transforms=None):
+    """
+    Image Dataset for the training of a Faster R-CNN model.
     
+    Args:
+        data_path (str): Path to the folder containing the images
+        label_path (str): Path to the folder containing the labels
+        transforms(Albumentations transformation): Transformation to apply to the frames
+
+    Attributes:
+        data_path (str):
+        label_path (str)
+        transforms (Albumentations transformation): Transformation to apply to the frames
+        data_info (pd.DataFrame): DataFrame containing the path of each video sequences, the path of each annotation folder 
+                                  and the fps of the video sequence
+
+    Methods:
+        __init__(): Initialise the dataset
+        __getitem__(): Load and Return the next items in the dataset
+        __len__(): Return the number of element in the Dataset
+        get_data_info(): Gather the information about the dataset
+    """
+
+
+    def __init__(self, data_path: str, label_path: str, transforms=None):
+        """
+        Initialise the dataset and raise FileNotFoundError if the folder does not exists.
+        
+        Args: 
+            data_path (str): Path to the folder containing the images
+            label_path (str): Path to the folder containing the labels
+            transforms(Albumentations transformation): Transformation to apply to the frames
+        """
+        
         if not os.path.exists(data_path):
             raise FileNotFoundError(f"The given path '{data_path}' does not exists or is wrong")
             
@@ -24,15 +54,15 @@ class ImageDataset(data.Dataset):
     
         self.data_path = data_path
         self.label_path = label_path
-    
-        self.clips_list = glob(os.path.join(self.data_path, "*/"))
         
         self.transforms = transforms
     
         # Get the different information needed to load the images and targets
         self.data_info = self.get_data_info()
     
+    
     def __getitem__(self, index):
+        """Return the next image, targets and index"""
         image_path = self.data_info["image_path"][index]
         anno_path = self.data_info["labels_path"][index]
         
@@ -52,8 +82,12 @@ class ImageDataset(data.Dataset):
         
         for line in lines:
             line = line.split(' ')
-            labels.append(1+int(line[0]))
-            box = [float(val) for val in line[1:]] # Need to convert Annotations to xyxy, originally in xywh normalised
+            if len(line) == 5:
+                labels.append(int(line[0])) # Label of the object
+                box = [float(val) for val in line[1:]] # Bounding boxes in YOLO format (normalised xywh)
+            else:
+                labels.append(int(line[1])) # Label of the object
+                box = [float(val) for val in line[2:]] # Bounding boxes in YOLO format (normalised xywh)
 
             box[0] = int(box[0] * width)
             box[2] = int(box[2] * width)
@@ -62,6 +96,8 @@ class ImageDataset(data.Dataset):
             box[3] = int(box[3] * height)
             
             box = [int(np.floor(np.max((0, box[0] - box[2]/2)))), int(np.floor(np.max((0, box[1] - box[3]/2)))), int(np.ceil(np.min((width, box[0] + box[2]/2)))), int(np.ceil(np.min((height, box[1] + box[3]/2))))]
+            
+            # Update the boxes if one dimension is null.
             if box[0] == box[2]:
                 if box[0] != 0:
                     box[0] -= 1
@@ -78,7 +114,7 @@ class ImageDataset(data.Dataset):
             
             bboxes.append(box)
         
-        # Video clip-level augmentation
+        # Image augmentation
         if self.transforms is not None:
             transformed = self.transforms(image=image, bboxes=bboxes, class_labels=labels)
             image = transformed["image"]
@@ -92,6 +128,7 @@ class ImageDataset(data.Dataset):
 
 
     def __len__(self):
+        """Return the number of frames."""
         return len(self.data_info)
           
     
@@ -103,10 +140,11 @@ class ImageDataset(data.Dataset):
             None
 
         Returns: 
-            pd.DataFrame: It contains the direction of each video sequences, the direction of each annotation folder 
+            pd.DataFrame: DataFrame containing the path of each video sequences, the path of each annotation folder 
                           and the fps of the video sequence
         """
 
+        # Get the path of each frame and label file
         files = [os.path.join(self.data_path,file) for file in sorted(os.listdir(self.data_path))]
         labels = [os.path.join(self.label_path,file) for file in sorted(os.listdir(self.label_path))]
         
@@ -121,7 +159,7 @@ class ImageDataset(data.Dataset):
             
             for anno in lst_anno:
                  with open(os.path.join(anno_path, anno), 'r') as f:
-                    if len(f.readlines()) != 0:
+                    if len(f.readlines()) != 0: # Only keep the image with an object to be detected
                 
                         image_path.append(os.path.join(video_path, anno.split(".")[0] + ".jpg"))
                         labels_path.append(os.path.join(anno_path, anno))

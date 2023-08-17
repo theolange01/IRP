@@ -1,3 +1,5 @@
+# IRP SiamMOT Tracker
+# Copied from https://github.com/facebookresearch/maskrcnn-benchmark/
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
 

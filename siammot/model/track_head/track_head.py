@@ -1,3 +1,6 @@
+# IRP SiamMOT Tracker
+# Copied from https://github.com/amazon-science/siam-mot
+
 import torch
 
 from siammot.structures.boxlist_ops import cat_boxlist

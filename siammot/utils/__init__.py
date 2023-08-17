@@ -1,3 +1,6 @@
+# IRP SiamMOT Tracker
+# Copied from # Ultralytics YOLO 🚀, AGPL-3.0 license: https://github.com/ultralytics/ultralytics
+
 import logging.config
 import os
 import platform

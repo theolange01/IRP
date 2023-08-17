@@ -1,3 +1,6 @@
+# IRP SiamMOT Tracker
+# Copied from https://github.com/amazon-science/siam-mot
+
 import torch
 import torch.nn.functional as F
 

@@ -1,4 +1,2 @@
 birds
 aircraft
-jet
-drones

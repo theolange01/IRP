@@ -1,17 +1,18 @@
+# IRP SiamMOT Tracker 
+
 import os
 import random
 from glob import glob
 import itertools
 from collections import defaultdict
-from typing import List, Tuple, Dict
+from typing import Tuple, Dict
 
+import numpy as np
 import pandas as pd
 
 import torch
 import torch.utils.data as data
 from torchvision.transforms.functional import to_tensor
-
-from siammot.data import to_image_list
 
 from PIL import Image
 
@@ -25,7 +26,8 @@ class VideoDataset(data.Dataset):
     def __init__(self, data_path: str, label_path: str, sampling_interval=250, clip_len=1000,
                  is_train=True, frames_in_clip=2, transforms=None):
         """
-        Initializes the YOLO model.
+        Initialise the dataset and raise FileNotFoundError if the folder does not exists.
+
         Args:
             data_path (str): Path to the data folder. This folder must contains videos or images sequences.
             label_path (str): Path to the label folder. It must contains the same subfolders as the data_path folder and a .txt file 
@@ -63,6 +65,7 @@ class VideoDataset(data.Dataset):
 
 
     def __getitem__(self, index):
+        """Return the next clip, targets and index"""
         video = []
         target = []
 
@@ -88,10 +91,13 @@ class VideoDataset(data.Dataset):
 
 
     def __len__(self):
+        """Return the number of clips."""
         return len(self.clips)
     
+
     def get_frame(self, video_path: str, frame_idx: int) -> torch.Tensor:
         """
+        Load the frame.
         
         Args: 
             video_path (str): The path to the folder containing the requested frame
@@ -105,10 +111,11 @@ class VideoDataset(data.Dataset):
         lst_frames = sorted(glob(os.path.join(video_path, "*.jpg")))
 
         # Load the frame
-        image = Image.open(lst_frames[frame_idx]).convert('RGB')
+        image = Image.open(lst_frames[frame_idx])
 
         return to_tensor(image)
     
+
     def get_anno(self, anno_path: str, frame_idx: int, img_shape: Tuple) -> Dict[str, torch.Tensor]:
         # Get the shape of the image to resize the boxes
         _, height, width = img_shape
@@ -126,21 +133,41 @@ class VideoDataset(data.Dataset):
         # The boxes need to be in YOLO format: normalised xywh
         for line in lines:
             line = line.split(' ')
-            labels.append(int(line[0]))
-            box = [float(val) for val in line[1:]] # Need to convert Annotations to xyxy, originally in xywh normalised
+            if len(line) == 5:
+                labels.append(int(line[0])) # Label of the object
+                box = [float(val) for val in line[1:]] # Bounding boxes in YOLO format (normalised xywh)
+            else:
+                labels.append(int(line[1])) # Label of the object
+                box = [float(val) for val in line[2:]] # Bounding boxes in YOLO format (normalised xywh)
 
-            box[0] = box[0] * width
-            box[2] = box[2] * width
+            box[0] = int(box[0] * width)
+            box[2] = int(box[2] * width)
 
-            box[1] = box[1] * height
-            box[3] = box[3] * height
+            box[1] = int(box[1] * height)
+            box[3] = int(box[3] * height)
+            
+            box = [int(np.floor(np.max((0, box[0] - box[2]/2)))), int(np.floor(np.max((0, box[1] - box[3]/2)))), int(np.ceil(np.min((width, box[0] + box[2]/2)))), int(np.ceil(np.min((height, box[1] + box[3]/2))))]
+            
+            # Update the boxes if one dimension is null.
+            if box[0] == box[2]:
+                if box[0] != 0:
+                    box[0] -= 1
+                
+                if box[2] != width:
+                    box[2] += 1
+            
+            if box[1] == box[3]:
+                if box[1] != 0:
+                    box[1] -= 1
+                
+                if box[3] != height:
+                    box[3] += 1
+            
+            boxes.append(box)
 
-            boxes.append([int(box[0] - box[2]/2), int(box[1] - box[3]/2), int(box[0] + box[2]/2), int(box[1] + box[3]/2)])
-
-        return {'boxes': torch.Tensor(boxes), 'labels': torch.tensor(labels, dtype=torch.int64)} # 'ids': torch.Tensor([-1]*len(labels)) see if needed
+        return {'boxes': torch.tensor(boxes), 'labels': torch.tensor(labels, dtype=torch.int64)} # 'ids': torch.Tensor([-1]*len(labels)) see if needed
 
 
-    
     def get_video_clips(self, sampling_interval_ms: int):
         """
         Process the long videos to a small video chunk (with self.clip_len seconds)
@@ -184,6 +211,7 @@ class VideoDataset(data.Dataset):
 
         return video_clips
     
+    
     def get_data_info(self):
         """
         Get the info about each video sequences
@@ -196,13 +224,13 @@ class VideoDataset(data.Dataset):
                           and the fps of the video sequence
         """
 
-        files = [os.path.join(self.data_path,file) for file in sorted(os.listdir(self.data_path))]
-        labels = [os.path.join(self.label_path,file) for file in sorted(os.listdir(self.label_path))]
+        files = [os.path.join(self.data_path,video) for video in sorted(os.listdir(self.data_path))]
+        labels = [os.path.join(self.label_path,video) for video in sorted(os.listdir(self.label_path))]
         fps = []
 
         # Read the meta_info.txt file of each video sequences to get the fps value
-        for file in files:
-            with open(os.path.join(file, "meta_info.txt"), 'r') as f:
+        for video in files:
+            with open(os.path.join(video, "meta_info.txt"), 'r') as f:
                     lines = f.readlines()
                     fps.append(int(lines[-3].split(' ')[-1][:-1] if lines[-3].split(' ')[-1][-1] == "\n" else lines[-3].split(' ')[-1])) # todo: precise position of the info
                     

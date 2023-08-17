@@ -1,7 +1,7 @@
+# IRP SiamMOT Tracker 
+
 import os
 from typing import Dict, Union
-
-import numpy as np
 
 from torch.utils.data import DataLoader
 
@@ -13,19 +13,20 @@ import albumentations as A
 
 from siammot.utils import LOGGER, colorstr
 
+
 def build_dataset(cfg, source: str) -> Dict[str, Union[VideoDataset, ImageDataset]]:
     """
     Build the Dataset needed during training.
 
     Args: 
         cfg object
-        (str) source: Path to the folder where the data are stored in the format (Train, ) or (Train, Val)
+        (str) source: Path to the folder where the data are stored in the format (Train, )
 
     Returns: 
         Dataset dict
     """
 
-    dataset_list = source # (Train, ) or (Train, Val)
+    dataset_list = source # (Train, )
     if not isinstance(dataset_list, (list, tuple)):
         raise RuntimeError(
             "dataset_list should be a list of strings, got {}".format(dataset_list)
@@ -34,7 +35,9 @@ def build_dataset(cfg, source: str) -> Dict[str, Union[VideoDataset, ImageDatase
     datasets = []
     for index, dataset_key in enumerate(dataset_list):
         
+        # If the tracking module is activated
         if cfg.MODEL.TRACK_ON:
+            # Create the Siam Augmentation.
             transforms = build_siam_augmentation(cfg, is_train = (index==0))
             
             # create the VideoDataset
@@ -44,8 +47,9 @@ def build_dataset(cfg, source: str) -> Dict[str, Union[VideoDataset, ImageDatase
                                     clip_len=cfg.VIDEO.TEMPORAL_WINDOW,
                                     transforms=transforms,
                                     frames_in_clip=cfg.VIDEO.RANDOM_FRAMES_PER_CLIP)
-        else:
         
+        # If only the Detection Module is active
+        else:
             transforms = A.Compose([A.ColorJitter(),
                                     A.Blur(),
                                     A.HorizontalFlip(p=0.5)], 
@@ -74,18 +78,18 @@ def build_dataset(cfg, source: str) -> Dict[str, Union[VideoDataset, ImageDatase
     return dataset
 
 
-def build_train_data_loader(cfg, source: str, batch_size: int, num_workers: int =2) -> Dict[str, DataLoader]:
+def build_train_data_loader(cfg, source: str, batch_size: int, num_workers: int = 4) -> Dict[str, DataLoader]:
     """
     Build the DataLoaders needed for training given the configuration file and the source of the data
 
     Args:
         cfg object
-        source (str): Path to the folder where the data are stored in the format (Train, ) or (Train, Val)
-        batch_size (int) : The number of data in each batch
-        num_workers (int)
+        source (str): Path to the folder where the data are stored in the format (Train, )
+        batch_size (int): The number of data in each batch
+        num_workers (int): Number of subprocesses to use for data loading
 
     Returns: 
-        DataLoader Dict
+        data_loaders (Dict[str, DataLoader]): DataLoader Dict
     """
 
     dataset = build_dataset(cfg, source)
@@ -97,7 +101,7 @@ def build_train_data_loader(cfg, source: str, batch_size: int, num_workers: int 
                           'val': DataLoader(dataset['val'], batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=VideoDatasetBatchCollator())}
       
       else:
-          data_loaders = {'train': DataLoader(dataset['train'], batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=VideoDatasetBatchCollator()),
+          data_loaders = {'train': DataLoader(dataset['train'], batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=VideoDatasetBatchCollator(), pin_memory=True),
                           'val': None}
     
     else:

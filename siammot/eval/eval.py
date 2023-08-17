@@ -1,1 +1,0 @@
-# Use that https://github.com/JonathonLuiten/TrackEval/blob/master/trackeval/metrics/clear.py

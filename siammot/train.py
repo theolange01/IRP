@@ -1,3 +1,5 @@
+# IRP SiamMOT Tracker
+
 import argparse
 import os
 import sys
@@ -17,9 +19,29 @@ from siammot.data.dataloader import build_train_data_loader
 
 
 def train(cfg, model_weight="", source="", device=None, epochs=100, batch_size=16, train_dir="runs/train", ckpt=None):
+    """
+    Train a SiamMOT model.
+
+    Args:
+        cfg (yacs.config.CfgNode): Default model config
+        model_weight (str): Path to the model's weights
+        source (str): Path to the dataset
+        device (torch.device): Device to use for training
+        epochs (int): Number of epochs
+        batch_size (int): Number of data per batch
+        train_dir (str): Path to save the training results
+        ckpt (str): Path to a checkpoint save of a previous training step
+    
+    Returns:
+        model (Any): Trained SiamMOT model
+        history (Dict[str, List]): Training Loss evolution
+    """
+    
+    # Update the configuration
     if os.path.exists(model_weight):
         cfg.MODEL.WEIGHT = model_weight
 
+    # Whether to use the Pytorch ResNet50 Faster R-CNN detection model
     if cfg.MODEL.USE_FASTER_RCNN:
         cfg.MODEL.BACKBONE.CONV_BODY = "Resnet50"
         cfg.MODEL.BACKBONE.OUT_CHANNEL = 256
@@ -38,10 +60,11 @@ def train(cfg, model_weight="", source="", device=None, epochs=100, batch_size=1
     cfg.SOLVER.EPOCHS = epochs
     cfg.SOLVER.VIDEO_CLIPS_PER_BATCH = batch_size 
 
-    # build model
+    # build SiamMOT model
     model = build_siammot(cfg)
     model.to(device)
 
+    # Define optimiser and lr scheduler for training
     optimizer = make_optimizer(cfg, model)
     scheduler = make_lr_scheduler(cfg, optimizer)
 
@@ -53,7 +76,7 @@ def train(cfg, model_weight="", source="", device=None, epochs=100, batch_size=1
         LOGGER.info(f"{colorstr('DataLoaders:')} Training only ✅")
 
     start_epochs = 0
-    if ckpt:
+    if ckpt: # Load checkpoint 
         try:
             checkpoint = torch.load(ckpt)
             model.load_state_dict(checkpoint['model_state_dict'])
@@ -68,6 +91,7 @@ def train(cfg, model_weight="", source="", device=None, epochs=100, batch_size=1
 
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
 
+    # Save model configuration
     cfg.freeze()
     if not cfg.MODEL.USE_FASTER_RCNN:
         with open(os.path.join(train_dir, "SiamMOT_" + cfg.MODEL.BACKBONE.CONV_BODY.upper() + ".yaml"), 'w') as f:
@@ -76,6 +100,7 @@ def train(cfg, model_weight="", source="", device=None, epochs=100, batch_size=1
         with open(os.path.join(train_dir, "SiamMOT_" + "fasterrcnn_resnet50_fpn".upper() + ".yaml"), 'w') as f:
             f.write(cfg.dump())
 
+    # Train model
     model, history = do_train(model, data_loaders, optimizer, scheduler, device, epochs, checkpoint_period, train_dir, start_epochs)
 
     LOGGER.info(f"Trainig successful\nResults available at '{train_dir}'")
@@ -84,6 +109,10 @@ def train(cfg, model_weight="", source="", device=None, epochs=100, batch_size=1
 
 
 def main():
+    """
+    Use: python3 train.py --config-file 'siammot/configs/default.yaml' --source 'IRP_dataset/train'
+    
+    """
     parser = argparse.ArgumentParser(description="PyTorch SiamMOT Training")
     parser.add_argument("--config-file", default="", metavar="FILE", help="path to config file", type=str)
     parser.add_argument("--model", default="", metavar="FILE", help="path to the model weight", type=str)

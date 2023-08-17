@@ -1,3 +1,6 @@
+# IRP SiamMOT Tracker
+# Copied from https://github.com/amazon-science/siam-mot
+
 from typing import List
 
 import torch

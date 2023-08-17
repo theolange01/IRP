@@ -1,3 +1,5 @@
+# IRP SiamMOT Tracker
+
 import os
 import time
 import copy
@@ -9,8 +11,7 @@ import torch
 from torch import nn, optim
 from torch.cuda.amp import autocast, GradScaler
 
-from siammot.utils import LOGGER, TQDM_BAR_FORMAT, colorstr
-from siammot.configs.default import cfg
+from siammot.utils import LOGGER, colorstr
 
 def make_optimizer(cfg, model):
     """
@@ -33,6 +34,7 @@ def make_optimizer(cfg, model):
             continue
         lr = cfg.SOLVER.BASE_LR
         weight_decay = cfg.SOLVER.WEIGHT_DECAY
+        
         if "bias" in key:
             lr = cfg.SOLVER.BASE_LR * cfg.SOLVER.BIAS_LR_FACTOR
             weight_decay = cfg.SOLVER.WEIGHT_DECAY_BIAS
@@ -86,6 +88,7 @@ def do_train(model, dataloaders, optimizer, scheduler, device, num_epochs, check
         model (torch.nn.Module): The trained model
         train_history (Dict(str, List[float])): The losses history
     """
+
     LOGGER.info("")
     LOGGER.info(f"{colorstr('Model Training:')} Starting training for {num_epochs} epochs...")
     
@@ -121,24 +124,32 @@ def do_train(model, dataloaders, optimizer, scheduler, device, num_epochs, check
                     continue
 
             running_loss = 0.0
-
+            
+            optimizer.zero_grad(set_to_none=True)
+            
             # Iterate over data.
             for video, targets, _ in tqdm(dataloaders[phase]):
                 inputs = [v.to(device) for v in video]
                 targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
+                
                 # zero the parameter gradients
-                optimizer.zero_grad()
+                # optimizer.zero_grad()
 
                 if device == torch.device('cuda:0'):
                     with autocast():
                         _, loss_dict = model(inputs, targets)
-                        loss = sum(value if value==value else 0 for value in loss_dict.values()) # todo, check loss size and type to get it right
+                        loss = sum(value if value==value else 0 for value in loss_dict.values())                     
 
                     if phase == 'train':
                         scaler.scale(loss).backward()
-                        scaler.step(optimizer)
-                        scaler.update()
+                        
+                        if (epoch+1)%2 == 0 or (epoch+1) == len(dataloaders[phase]):
+                            nn.utils.clip_grad_norm_(model.parameters(), 1e50) # Clip the gradient to avoid infinite values
+                            scaler.step(optimizer)
+                            scaler.update()
+                            optimizer.zero_grad(set_to_none=True)
+                            
                 
                 else:
                     # forward
@@ -151,12 +162,9 @@ def do_train(model, dataloaders, optimizer, scheduler, device, num_epochs, check
                         if phase == 'train':
                             loss.backward()
                             optimizer.step()
-
+                
                 # statistics
                 running_loss += loss.item() * len(inputs)
-
-                if not running_loss == running_loss:
-                    print(loss_dict)
                 
                 if len(losses.keys()):
                     for k, _ in loss_dict.items():
@@ -168,12 +176,16 @@ def do_train(model, dataloaders, optimizer, scheduler, device, num_epochs, check
                     losses.update(loss_dict)
                     for k, _ in losses.items():
                         losses[k] *= len(inputs)
-
+            
                 del inputs
                 del targets
-            
+                
+            # Empty CUDA memory cache
+            torch.cuda.empty_cache()
+                
             if phase == 'train':
-                scheduler.step()
+                # scheduler.step()
+                pass
             
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
 

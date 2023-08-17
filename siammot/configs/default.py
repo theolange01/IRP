@@ -1,4 +1,5 @@
 # IRP SiamMOT Tracker 
+# Inpired by https://github.com/amazon-science/siam-mot
 # Default model settings, training settings and hyperparameters for training
 
 from yacs.config import CfgNode as CN
@@ -8,7 +9,7 @@ cfg = CN()
 # Model
 # -----------------------------------------------------------------------------
 cfg.MODEL = CN()
-cfg.MODEL.USE_FASTER_RCNN = False
+cfg.MODEL.USE_FASTER_RCNN = False # Whether or not to use a pretrained PyTorch Faster R-CNN
 cfg.MODEL.WEIGHT = "" # (str, Optional) Path to the pretrained weight of a model
 
 
@@ -29,23 +30,21 @@ cfg.MODEL.BACKBONE.WEIGHT = "" # (str, Optional) Path to a pretrained version of
 
 cfg.INPUT = CN()
 cfg.INPUT.MIN_SIZE_TRAIN = 640 # (int) Size of the smallest side of the image during training
-cfg.INPUT.MAX_SIZE_TRAIN = 960 # (int) Maximum size of the side of the image during training
+cfg.INPUT.MAX_SIZE_TRAIN = 640 # (int) Maximum size of the side of the image during training
 cfg.INPUT.MIN_SIZE_TEST = 1280 # (int) Size of the smallest side of the image during testing
 cfg.INPUT.MAX_SIZE_TEST = 1920 # (int) Maximum size of the side of the image during testing
 cfg.INPUT.AMODAL = False # (bool) Whether to clip the bounding box beyond image boundary
 
 # Data Augmentation -----------------------------------------------------------
-# cfg.INPUT.MOTION_LIMIT = 0.05
-# cfg.INPUT.COMPRESSION_LIMIT = 50
-# cfg.INPUT.MOTION_BLUR_PROB = 1.0
-# cfg.INPUT.BRIGHTNESS = 0.1
-# cfg.INPUT.CONTRAST = 0.1
-# cfg.INPUT.SATURATION = 0.1
-# cfg.INPUT.HUE = 0.1
+cfg.INPUT.BRIGHTNESS = 0.1
+cfg.INPUT.CONTRAST = 0.1
+cfg.INPUT.SATURATION = 0.1
+cfg.INPUT.HUE = 0.1
+cfg.INPUT.BLUR_KERNEL = 3
+cfg.INPUT.BLUR_SIGMA = (0.1, 2.0)
 
 # Flips -----------------------------------------------------------------------
-# cfg.INPUT.HORIZONTAL_FLIP_PROB_TRAIN = 0.5
-# cfg.INPUT.VERTICAL_FLIP_PROB_TRAIN = 0.0
+cfg.INPUT.HORIZONTAL_FLIP_PROB_TRAIN = 0.5
 
 
 # -----------------------------------------------------------------------------
@@ -92,8 +91,8 @@ cfg.MODEL.RPN.NMS_THRESH = 0.7 # (float) NMS threshold used on RPN proposals
 cfg.MODEL.RPN.MIN_SIZE = 0 # (int) Proposal height and width both need to be greater than RPN_MIN_SIZE
 
 # (int) Number of top scoring RPN proposals to keep after combining proposals from all FPN levels
-cfg.MODEL.RPN.FPN_POST_NMS_TOP_N_TRAIN = 300
-cfg.MODEL.RPN.FPN_POST_NMS_TOP_N_TEST = 300
+cfg.MODEL.RPN.FPN_POST_NMS_TOP_N_TRAIN = 1000
+cfg.MODEL.RPN.FPN_POST_NMS_TOP_N_TEST = 1000
 
 cfg.MODEL.RPN.SCORE_THRESH = 0.0 # (float) NMS threshold used for postprocessing the RPN proposals
 cfg.MODEL.RPN.WEIGHT = "" # (str, Optional) Path to a pretrained version of the RPN
@@ -136,7 +135,7 @@ cfg.MODEL.ROI_BOX_HEAD.PREDICTOR = "FastRCNNPredictor" # (str) Name of the predi
 cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION = 5 # (int) 
 cfg.MODEL.ROI_BOX_HEAD.POOLER_SAMPLING_RATIO = 2 # (int) 
 cfg.MODEL.ROI_BOX_HEAD.POOLER_SCALES = (0.25, 0.125) # (0.25, 0.125, 0.0625, 0.03125)
-cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES = 3 # (int) Number of classes
+cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES = 2 # (int) Number of classes
 cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM = 256 # (int) Hidden layer dimension when using an MLP for the RoI box head
 cfg.MODEL.ROI_BOX_HEAD.WEIGHT = "" # (str, Optional) Path to a pretrained version of the RPN
 
@@ -164,7 +163,7 @@ cfg.MODEL.TRACK_HEAD.RESUME_TRACK_THRESH = 0.4 # (float)
 cfg.MODEL.TRACK_HEAD.MAX_DORMANT_FRAMES = 20 # (int) Maximum number of frames that a track can be dormant
 
 # track proposal sampling
-cfg.MODEL.TRACK_HEAD.PROPOSAL_PER_IMAGE = 300
+cfg.MODEL.TRACK_HEAD.PROPOSAL_PER_IMAGE = 200
 cfg.MODEL.TRACK_HEAD.FG_IOU_THRESHOLD = 0.65
 cfg.MODEL.TRACK_HEAD.BG_IOU_THRESHOLD = 0.35
 

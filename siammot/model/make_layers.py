@@ -1,8 +1,13 @@
+# IRP SiamMOT Tracker
+# Copied from https://github.com/facebookresearch/maskrcnn-benchmark/
+# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 from siammot.configs.default import cfg
+
 
 def get_group_gn(dim, dim_per_gp, num_groups):
     """get number of groups used by GroupNorm, based on number of channels."""
