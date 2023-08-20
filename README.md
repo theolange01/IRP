@@ -20,13 +20,15 @@ This document describes the different components of this project and their usage
 
 ## <div align="center">Installation Instructions</div>
 
-The tracking algorithm has been developed using multiple Python libraries. In order for the tracker to work correctly, make sure the needed packages are installed on your working environment. This project is mainly based on [**Ultralytics**](https://github.com/ultralytics/ultralytics) and **OpenCV** packages.
+The tracking algorithm has been developed using multiple Python libraries. In order for the tracker to work correctly, make sure the needed packages are installed on your working environment.
 
 Pip install the required packages in a [**Python>=3.8**](https://www.python.org/) environment.
 
 ```bash
 pip install -r requirements.txt
 ```
+
+This project is mainly based on [**Ultralytics**](https://github.com/ultralytics/ultralytics) and **OpenCV** packages.
 
 ## <div align="center">Dataset</div>
 
