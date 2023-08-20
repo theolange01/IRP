@@ -70,3 +70,48 @@ resolution: (1280.0, 720.0)
 
 ## <div align="center">Tracking Algorithm</div>
 
+The source code for the tracking system developed during this project is provided in the **ByteTrack** folder. This tracker is based on [**Ultralytics**](https://github.com/ultralytics/ultralytics) Yolov8 model, **OpenCV** background subtraction algorithm, and [**BYTE**](https://arxiv.org/abs/2110.06864) association algorithm. This tracking algorithm can be used as follows:
+
+```python
+import os
+from glob import glob 
+import cv2
+
+from ByteTrack import Tracker # Import the Tracking model
+
+# Load a model
+model = Tracker("ByteTrack/weights/trained_yolov8x.pt")
+
+# Use the model
+metrics = model.val("IRP_Dataset/val")  # evaluate model performance on the validation set
+
+results = model("IRP_Dataset/test/Test_01", fps=25)  # predict and track on an entire video or frame sequence
+
+# Predict and track frame by frame
+# Get the path to a video or image sequence
+data_path = "/IRP_dataset/test/Test_01"
+
+# Get the fps saved in the same folder
+with open(os.path.join(data_path, "meta_info.txt"), "r") as f:
+    meta_info = [line[:-1] if line[-1] == '\n' else line for line in f.readlines()]
+    
+fps = int(meta_info[4].split(" ")[-1])
+
+# List of frames
+lst_frames = sorted(glob(os.path.join(data_path, '*.jpg')))
+
+for file in lst_frames:
+    frame = cv2.imread(file)
+
+    results = model.track(frame, persist=True, fps=fps)
+```
+
+Refer to the Demonstration Notebook for an example of the tracking pipeline.
+
+In addition, the **siammot** folder contains the source code for a second tracking model [**SiamMOT**](https://arxiv.org/abs/2105.11595). This model did not end up working but the code could be useful in some way for further works.
+
+## <div align="center">Tracking Outputs</div>
+
+The videos resulting from tracking on the testing set are available in the folder **Tracking_Outputs**. These videos visually show the tracking performance of the current tracking algorithm and could be used for comparison.
+
+![frame1](https://github.com/theolange01/IRP/assets/116893751/e573920c-863b-4bfa-a78a-bf2432a9c940)
