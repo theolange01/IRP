@@ -10,7 +10,16 @@ The main purpose of this IRP project is the development of a tracking solution f
 
 The tracking system proposed during this IRP aim to address the problem of birds monitoring in airports. The objective is to include the tracking algorithm as part of a surveillance system in order to alert from the presence of any moving objects, in particular birds. It would therefore increase the safety in airports.
 
-This document describes the different components of this project and their usage.
+This document describes the different components of this project and their usage. The provided technical work contains the following files and folders:
+
+- ByteTrack: contains the tracking algorithm developed during this project
+- Guide_Notebooks: contains two notebooks. One is a demonstration of the tracker's usage and the second one shows how to train a YOLO model with the custom Dataset
+- IRP_Dataset: contains the custom dataset created during this project
+- siammot: contains the source code for the SiamMOT model. This model is not correctly working
+- Tracking_Outputs: contains the videos resulting from tracking on the testing set
+- Ethical_Approval_Letter.pdf: CURES approval letter
+- Lange_s394369_Poster_MScCSTE.ppt: Poster Editable
+- Lange_s394369_Thesis_MScCSTE.zip: LaTeX files of the thesis
 
 ## <div align="center">Installation Instructions</div>
 
