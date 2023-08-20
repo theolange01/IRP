@@ -1,15 +1,17 @@
 # <div align="center">IRP - Development of a Tracking System for the Surveillance of Birds in Airports</div>
 
+<p style="text-align: justify;">
 With the recent development of air travel as a common mean of transport, the question of safety and security in airports has become crucial. Amongst all the different existing danger, birds are considered as one of the main threats to aircraft safety. Bird strikes occur mainly during landing and take off. However, the current surveillance systems are not robust and accurate enough to alert from the presence of birds in restricted areas.
 
+<p style="text-align: justify;">
 The main purpose of this IRP project is the development of a tracking solution for the surveillance of birds in airports to tackle the problem of birds monitoring. This tracking system aim to track and monitor birds in particular in restricted airports area in order to reduce the risks of bird strikes. The system developed during this project has beed designed to meet the following objectives:
 
 - Track and monitor birds from a static camera position
 - Follow the trajectory of any other moving objects
 - Robustly handle challenging situations.
-
+<p style="text-align: justify;">
 The tracking system proposed during this IRP aim to address the problem of birds monitoring in airports. The objective is to include the tracking algorithm as part of a surveillance system in order to alert from the presence of any moving objects, in particular birds. It would therefore increase the safety in airports.
-
+<p style="text-align: justify;">
 This document describes the different components of this project and their usage. The provided technical work contains the following files and folders:
 
 - ByteTrack: contains the tracking algorithm developed during this project
@@ -18,8 +20,9 @@ This document describes the different components of this project and their usage
 - siammot: contains the source code for the SiamMOT model. This model is not correctly working
 - Tracking_Outputs: contains the videos resulting from tracking on the testing set.
 
-## <div align="center">Installation Instructions</div>
 
+## <div align="center">Installation Instructions</div>
+<p style="text-align: justify;">
 The tracking algorithm has been developed using multiple Python libraries. In order for the tracker to work correctly, make sure the needed packages are installed on your working environment.
 
 Pip install the required packages in a [**Python>=3.8**](https://www.python.org/) environment.
@@ -31,7 +34,7 @@ pip install -r requirements.txt
 This project is mainly based on [**Ultralytics**](https://github.com/ultralytics/ultralytics) and **OpenCV** packages.
 
 ## <div align="center">Dataset</div>
-
+<p style="text-align: justify;">
 The custom dataset created for this project is provided in the **IRP_Dataset** ZIP file. In order to be used, it should be first unzipped. The dataset folder is organised as follows:
 
 ```bash
@@ -51,18 +54,18 @@ IRP_Dataset/
 │   ├── ...
 │   └── Test_15
 ```
-
-It contains 4 different subfolders used for different tasks. The subfolders **train**, **YOLO_train**, and **val** contain two subsubfolders **images** and **labels**. These two subsubfolders contain folders for each different frame sequence with the frames and the labels files respectively. 
-
-The **YOLO_train** subfolder contains the data used for the training of the [**Ultralytics**](https://github.com/ultralytics/ultralytics) Yolov8x model. It contains two subfolders for the images and the label files respectively. The different frames extracted from different videos are not separated into different folder since the YOLOv8 model is a detection model that does not need to process each frame sequence individually. The label files are in the YOLO format. Therefore, these specific annotations cannot be used directly to train or validate a tracking model.
-
-The **train** subfolder has not been used directly in the project. It contains the same data save in the **YOLO_train** but the frames are stored in different folder in order to distinguish each frame sequence. In addition, the labels files are also in YOLO format, with an additional value corresponding to the tracking ID. This subfolder could be used to train directly a tracking model such as [**SiamMOT**](https://arxiv.org/abs/2105.11595). It is important to note that the frame sequences in this subfolder do not correspond to videos recorded from a static camera position.
-
-The **val** subfolder contains the videos that have been used for the validation of the proposed tracking model. It contains 5 different frame sequences annotated for tracking in the YOLO format. 
-
-The **test** subfolder contains different frame sequences used to visually assess the tracking performance.
-
-In addition, each folder containing a single frame sequence also contains a ```meta_info.txt``` file providing informations about the video.
+<p style="text-align: justify;">
+It contains 4 different subfolders used for different tasks. The subfolders <strong>train</strong>, <strong>YOLO_train</strong>, and <strong>val</strong> contain two subsubfolders <strong>images</strong> and <strong>labels</strong>. These two subsubfolders contain folders for each different frame sequence with the frames and the labels files respectively. 
+<p style="text-align: justify;">
+The <strong>YOLO_train</strong> subfolder contains the data used for the training of the <a href="https://github.com/ultralytics/ultralytics"><strong>Ultralytics</strong></a> Yolov8x model. It contains two subfolders for the images and the label files respectively. The different frames extracted from different videos are not separated into different folder since the YOLOv8 model is a detection model that does not need to process each frame sequence individually. The label files are in the YOLO format and therefore cannot be used directly to train or validate a tracking model.
+<p style="text-align: justify;">
+The <strong>train</strong> subfolder has not been used directly in the project. It contains the same data save in the <strong>YOLO_train</strong> but the frames are stored in different folder in order to distinguish each frame sequence. In addition, the labels files are also in YOLO format, with an additional value corresponding to the tracking ID. This subfolder could be used to train directly a tracking model such as <a href="https://arxiv.org/abs/2105.11595"><strong>SiamMOT</strong></a>. It is important to note that the frame sequences in this subfolder do not correspond to videos recorded from a static camera position.
+<p style="text-align: justify;">
+The <strong>val</strong> subfolder contains the videos that have been used for the validation of the proposed tracking model. It contains 5 different frame sequences annotated for tracking in the YOLO format. 
+<p style="text-align: justify;">
+The <strong>test</strong> subfolder contains different frame sequences used to visually assess the tracking performance.
+<p style="text-align: justify;">
+  In addition, each folder containing a single frame sequence also contains a <em>meta_info.txt</em> file providing informations about the video.
 
 ```bash
 [METAINFO]
@@ -75,8 +78,8 @@ resolution: (1280.0, 720.0)
 ```
 
 ## <div align="center">Tracking Algorithm</div>
-
-The source code for the tracking system developed during this project is provided in the **ByteTrack** folder. This tracker is based on [**Ultralytics**](https://github.com/ultralytics/ultralytics) Yolov8 model, **OpenCV** background subtraction algorithm, and [**BYTE**](https://arxiv.org/abs/2110.06864) association algorithm. This tracking algorithm can be used as follows:
+<p style="text-align: justify;">
+The source code for the tracking system developed during this project is provided in the <strong>ByteTrack</strong> folder. This tracker is based on <a href="https://github.com/ultralytics/ultralytics"><strong>Ultralytics</strong></a> Yolov8 model, <strong>OpenCV</strong> background subtraction algorithm, and <a href="https://arxiv.org/abs/2110.06864"><strong>BYTE</strong></a> association algorithm. This tracking algorithm can be used as follows:
 
 ```python
 import os
@@ -90,8 +93,7 @@ model = Tracker("ByteTrack/weights/trained_yolov8x.pt")
 
 # Use the model
 metrics = model.val("IRP_Dataset/val")  # evaluate model performance on the validation set
-
-results = model("IRP_Dataset/test/Test_01", fps=25)  # predict and track on an entire video or frame sequence
+results = model("IRP_Dataset/test/Test_01", fps=25)  # predict and track on an entire video
 
 # Predict and track frame by frame
 # Get the path to a video or image sequence
@@ -113,11 +115,11 @@ for file in lst_frames:
 ```
 
 Refer to the Demonstration Notebook for an example of the tracking pipeline.
-
-In addition, the **siammot** folder contains the source code for a second tracking model [**SiamMOT**](https://arxiv.org/abs/2105.11595). This model did not end up working but the code could be useful in some way for further works.
+<p style="text-align: justify;">
+  In addition, the <strong>siammot</strong> folder contains the source code for a second tracking model <a href="https://arxiv.org/abs/2105.11595"><strong>SiamMOT</strong></a>. This model did not end up working but the code could be useful in some way for further works.
 
 ## <div align="center">Tracking Outputs</div>
-
-The videos resulting from tracking on the testing set are available in the folder **Tracking_Outputs**. These videos visually show the tracking performance of the current tracking algorithm and could be used for comparison.
+<p style="text-align: justify;">
+The videos resulting from tracking on the testing set are available in the folder <strong>Tracking_Outputs</strong>. These videos visually show the tracking performance of the current tracking algorithm and could be used for comparison.
 
 ![frame1](https://github.com/theolange01/IRP/assets/116893751/e573920c-863b-4bfa-a78a-bf2432a9c940)
