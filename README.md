@@ -16,22 +16,17 @@ This document describes the different components of this project and their usage
 - Guide_Notebooks: contains two notebooks. One is a demonstration of the tracker's usage and the second one shows how to train a YOLO model with the custom Dataset
 - IRP_Dataset: contains the custom dataset created during this project
 - siammot: contains the source code for the SiamMOT model. This model is not correctly working
-- Tracking_Outputs: contains the videos resulting from tracking on the testing set
-- Ethical_Approval_Letter.pdf: CURES approval letter
-- Lange_s394369_Poster_MScCSTE.ppt: Poster Editable
-- Lange_s394369_Thesis_MScCSTE.zip: LaTeX files of the thesis
+- Tracking_Outputs: contains the videos resulting from tracking on the testing set.
 
 ## <div align="center">Installation Instructions</div>
 
-The tracking algorithm has been developed using multiple Python libraries. In order for the tracker to work correctly, make sure the needed packages are installed on your working environment.
+The tracking algorithm has been developed using multiple Python libraries. In order for the tracker to work correctly, make sure the needed packages are installed on your working environment. This project is mainly based on [**Ultralytics**](https://github.com/ultralytics/ultralytics) and **OpenCV** packages.
 
 Pip install the required packages in a [**Python>=3.8**](https://www.python.org/) environment.
 
 ```bash
 pip install -r requirements.txt
 ```
-
-This project is mainly based on [**Ultralytics**](https://github.com/ultralytics/ultralytics) and **OpenCV** packages.
 
 ## <div align="center">Dataset</div>
 
