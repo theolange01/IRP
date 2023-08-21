@@ -65,7 +65,7 @@ The <strong>val</strong> subfolder contains the videos that have been used for t
 <p style="text-align: justify;">
 The <strong>test</strong> subfolder contains different frame sequences used to visually assess the tracking performance.
 <p style="text-align: justify;">
-  In addition, each folder containing a single frame sequence also contains a <em>meta_info.txt</em> file providing informations about the video.
+  In addition, each folder containing a single frame sequence also contains a <code>meta_info.txt</code> file providing informations about the video.
 
 ```bash
 [METAINFO]
@@ -113,10 +113,10 @@ for file in lst_frames:
 
     results = model.track(frame, persist=True, fps=fps)
 ```
-
-There are multiple parameters that can be tuned depending on the situation. There are different possibilities to save the tracking results and change the detection model configuration. See the code documentation in ```ByteTrack/engine/model.py``` for more information.
-
-In addition, the configuration of the BYTE association algorithm is available in '''ByteTrack/tracker/cfg'''. There are two configuration files: one for the variation of the BYTE algorithm used in this project and a second one for the BoT-SORT algorithm based on the first association algorithm. This second matching method has not been tested an dused during this project but could be useful for further development of the work. These two configuration files contain the default values set for the different hyper-parameters important for tracking. By default, the Byte algorithm is used. The user can change the association algorithm by specifying the value of the argument ```tracker```.
+<p style="text-align: justify;">
+There are multiple parameters that can be tuned depending on the situation. There are different possibilities to save the tracking results and change the detection model configuration. See the code documentation in <code>ByteTrack/engine/model.py</code> for more information.
+<p style="text-align: justify;">
+In addition, the configuration of the BYTE association algorithm is available in <code>ByteTrack/tracker/cfg</code>. There are two configuration files: one for the variation of the BYTE algorithm used in this project and a second one for the BoT-SORT algorithm based on the first association algorithm. This second matching method has not been tested an dused during this project but could be useful for further development of the work. These two configuration files contain the default values set for the different hyper-parameters important for tracking. By default, the Byte algorithm is used. The user can change the association algorithm by specifying the value of the argument <code>tracker</code>.
 
 Refer to the Demonstration Notebook for an example of the tracking pipeline.
 <p style="text-align: justify;">
