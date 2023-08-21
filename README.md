@@ -114,9 +114,13 @@ for file in lst_frames:
     results = model.track(frame, persist=True, fps=fps)
 ```
 
+There are multiple parameters that can be tuned depending on the situation. There are different possibilities to save the tracking results and change the detection model configuration. See the code documentation in ```ByteTrack/engine/model.py``` for more information.
+
+In addition, the configuration of the BYTE association algorithm is available in '''ByteTrack/tracker/cfg'''. There are two configuration files: one for the variation of the BYTE algorithm used in this project and a second one for the BoT-SORT algorithm based on the first association algorithm. This second matching method has not been tested an dused during this project but could be useful for further development of the work. These two configuration files contain the default values set for the different hyper-parameters important for tracking. By default, the Byte algorithm is used. The user can change the association algorithm by specifying the value of the argument ```tracker```.
+
 Refer to the Demonstration Notebook for an example of the tracking pipeline.
 <p style="text-align: justify;">
-  In addition, the <strong>siammot</strong> folder contains the source code for a second tracking model <a href="https://arxiv.org/abs/2105.11595"><strong>SiamMOT</strong></a>. This model did not end up working but the code could be useful in some way for further works.
+In addition, the <strong>siammot</strong> folder contains the source code for a second tracking model <a href="https://arxiv.org/abs/2105.11595"><strong>SiamMOT</strong></a>. This model did not end up working but the code could be useful in some way for further works.
 
 ## <div align="center">Tracking Outputs</div>
 <p style="text-align: justify;">
