@@ -35,7 +35,7 @@ This project is mainly based on [**Ultralytics**](https://github.com/ultralytics
 
 ## <div align="center">Dataset</div>
 <p style="text-align: justify;">
-The custom dataset created for this project is provided in the **IRP_Dataset** ZIP file. In order to be used, it should be first unzipped. The dataset folder is organised as follows:
+The custom dataset created for this project is provided in the <strong>IRP_Dataset</strong> ZIP file. In order to be used, it should be first unzipped. The dataset folder is organised as follows:
 
 ```bash
 IRP_Dataset/
