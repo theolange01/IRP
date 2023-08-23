@@ -78,6 +78,7 @@ resolution: (1280.0, 720.0)
 ```
 
 ## <div align="center">Tracking Algorithm</div>
+### YOLOv8 + MotionDetector + Byte: ByteTrack
 <p style="text-align: justify;">
 The source code for the tracking system developed during this project is provided in the <strong>ByteTrack</strong> folder. This tracker is based on <a href="https://github.com/ultralytics/ultralytics"><strong>Ultralytics</strong></a> Yolov8 model, <strong>OpenCV</strong> background subtraction algorithm, and <a href="https://arxiv.org/abs/2110.06864"><strong>BYTE</strong></a> association algorithm. This tracking algorithm can be used as follows:
 
@@ -119,8 +120,18 @@ There are multiple parameters that can be tuned depending on the situation. Ther
 In addition, the configuration of the BYTE association algorithm is available in <code>ByteTrack/tracker/cfg</code>. There are two configuration files: one for the variation of the BYTE algorithm used in this project and a second one for the BoT-SORT algorithm based on the first association algorithm. This second matching method has not been tested an dused during this project but could be useful for further development of the work. These two configuration files contain the default values set for the different hyper-parameters important for tracking. By default, the Byte algorithm is used. The user can change the association algorithm by specifying the value of the argument <code>tracker</code>.
 
 Refer to the Demonstration Notebook for an example of the tracking pipeline.
+
+
+### SiamMOT
 <p style="text-align: justify;">
-In addition, the <strong>siammot</strong> folder contains the source code for a second tracking model <a href="https://arxiv.org/abs/2105.11595"><strong>SiamMOT</strong></a>. This model did not end up working but the code could be useful in some way for further works.
+In addition, the <strong>siammot</strong> folder contains the source code for a second tracking model <a href="https://arxiv.org/abs/2105.11595"><strong>SiamMOT</strong></a>. This model did not end up working but the code could be useful in some way for further works. As of now, only the training phase of the model has been implemented. In order to train the model, run the following command:
+
+```
+python3 siammot/train.py --config-file "siammot/configs/default.yaml" --source "IRP_Dataset/train" --epochs 20 --batch_size 1
+```
+
+<p style="text-align: justify;">
+The model has been tested on a Crescent 2 account on a single GPU. The submission script is available in the folder <code>siammot</code>. Every python libraries required for this model are listed in the file <code>requirements.txt</code>. The model encountered some issues during training. First, the model is quite large and takes a lot of the GPU memory. In addition, the gradient computed during training and used to optimise the model's parameter happen to reach infinite values quickly. Finally, even clipping the gradient did not resolve the issue. Indeed, with a limited gradient, the different training losses did not decrease over the epochs.
 
 ## <div align="center">Tracking Outputs</div>
 <p style="text-align: justify;">
